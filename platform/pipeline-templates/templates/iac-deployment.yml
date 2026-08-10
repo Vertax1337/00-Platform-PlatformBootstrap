@@ -1,0 +1,55 @@
+parameters:
+- name: environmentName
+  type: string
+  default: production
+- name: validationSteps
+  type: stepList
+  default: []
+- name: planSteps
+  type: stepList
+  default: []
+- name: deploySteps
+  type: stepList
+  default: []
+- name: verifySteps
+  type: stepList
+  default: []
+
+stages:
+- stage: Validate
+  jobs:
+  - job: ValidateIaC
+    steps:
+    - ${{ each step in parameters.validationSteps }}:
+      - ${{ step }}
+
+- stage: Plan
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+  - job: PlanIaC
+    steps:
+    - ${{ each step in parameters.planSteps }}:
+      - ${{ step }}
+
+- stage: Deploy
+  dependsOn: Plan
+  condition: succeeded()
+  jobs:
+  - deployment: DeployIaC
+    environment: ${{ parameters.environmentName }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - ${{ each step in parameters.deploySteps }}:
+            - ${{ step }}
+
+- stage: Verify
+  dependsOn: Deploy
+  condition: succeeded()
+  jobs:
+  - job: VerifyDeployment
+    steps:
+    - ${{ each step in parameters.verifySteps }}:
+      - ${{ step }}
