@@ -1,0 +1,77 @@
+parameters:
+- name: readonlyValidationSteps
+  type: stepList
+  default: []
+- name: collectionSteps
+  type: stepList
+  default: []
+- name: sanitizationRequired
+  type: boolean
+  default: false
+- name: sanitizationSteps
+  type: stepList
+  default: []
+- name: documentationSteps
+  type: stepList
+  default: []
+- name: publishSteps
+  type: stepList
+  default: []
+
+stages:
+- stage: SecurityGate
+  jobs:
+  - job: ReadOnlyValidation
+    steps:
+    - ${{ each step in parameters.readonlyValidationSteps }}:
+      - ${{ step }}
+    - pwsh: |
+        if ($env:BSSE_READONLY_VERIFIED -ne 'true') {
+          throw "HARD FAIL: approved read-only verification marker missing."
+        }
+      displayName: Enforce read-only gate
+
+- stage: Collect
+  dependsOn: SecurityGate
+  condition: succeeded()
+  jobs:
+  - job: Collection
+    steps:
+    - ${{ each step in parameters.collectionSteps }}:
+      - ${{ step }}
+
+- ${{ if eq(parameters.sanitizationRequired, true) }}:
+  - stage: Sanitize
+    dependsOn: Collect
+    condition: succeeded()
+    jobs:
+    - job: Sanitization
+      steps:
+      - ${{ each step in parameters.sanitizationSteps }}:
+        - ${{ step }}
+      - pwsh: |
+          if ($env:BSSE_SANITIZATION_VERIFIED -ne 'true') {
+            throw "HARD FAIL: sanitization verification marker missing."
+          }
+        displayName: Enforce sanitization gate
+
+- stage: Document
+  dependsOn:
+  - Collect
+  - ${{ if eq(parameters.sanitizationRequired, true) }}:
+    - Sanitize
+  condition: succeeded()
+  jobs:
+  - job: Documentation
+    steps:
+    - ${{ each step in parameters.documentationSteps }}:
+      - ${{ step }}
+
+- stage: Publish
+  dependsOn: Document
+  condition: succeeded()
+  jobs:
+  - job: PublishDocumentation
+    steps:
+    - ${{ each step in parameters.publishSteps }}:
+      - ${{ step }}
