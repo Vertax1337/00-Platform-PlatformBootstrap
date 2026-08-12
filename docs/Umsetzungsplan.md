@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.5.2
+**Version:** 1.6
 
 ## 1. Core
 
@@ -36,6 +36,7 @@ Enthält:
 - Organisationsprofile
 - Namenskonventionen
 - Plattform-/Security-Dokumentation
+- zentralen Techniker-Onboarding-Workflow als Azure Pipeline
 
 ### `PipelineTemplates`
 
@@ -201,3 +202,118 @@ Die Präfixierung ist für die bestehenden Repositories unter `10-Automation` be
 - Legacy-Namen `OPNsenseDocumentation` / `OpenSenseDocumentation` werden nicht mehr provisioniert.
 - Falls ausschließlich ein Legacy-Name vorhanden ist, erzeugt der Bootstrap kein Duplikat und führt keine automatische Umbenennung durch; der Lauf wird vor `-Apply` zur manuellen Prüfung blockiert.
 - Bestehende Git-Inhalte und Historie werden nicht verändert.
+
+## 10. Zentraler Techniker-Workflow / Dual Runtime
+
+### Beschlossen
+
+Der normale Techniker soll das Bootstrap-Repository künftig **nicht lokal herunterladen oder pflegen müssen**.
+
+Produktiver Zielweg:
+
+```text
+Techniker
+    ↓
+Azure DevOps / Run pipeline
+    ↓
+Customer-Onboarding
+    ↓
+Validate
+    ↓
+Dry Run
+    ↓
+Manual Approval
+    ↓
+Apply
+    ↓
+Post-Apply Verify
+```
+
+Das zugrunde liegende PowerShell-Skript bleibt identisch zur lokalen Entwicklungs-/Debug-Ausführung:
+
+```text
+bootstrap/New-BSSECustomerProject.ps1
+```
+
+### Automatische Laufzeit-/Authentifizierungserkennung
+
+`BSSE.AzureDevOps.Common.ps1` entscheidet selbstständig zwischen:
+
+```text
+Local
+Pipeline
+```
+
+Local:
+- vorhandenen Azure-CLI-Kontext verwenden,
+- passenden gecachten Tenant-/Subscription-Kontext suchen,
+- bei Bedarf gezielten interaktiven Login durchführen,
+- Browser-Fallback ausschließlich lokal zulassen.
+
+Pipeline:
+- keine interaktive Anmeldung,
+- kein Browser-Fallback,
+- zuerst bereits durch `AzureCLI@3` hergestellte Azure-DevOps-Service-Connection-/WIF-Session verwenden,
+- optional `SYSTEM_ACCESSTOKEN` als nicht-interaktiven Kompatibilitätsfallback automatisch an die Azure-DevOps-CLI binden,
+- andernfalls Fail Closed.
+
+### Pipeline
+
+Repository-Datei:
+
+```text
+/pipelines/customer-onboarding.yml
+```
+
+Implementierte Stages:
+
+```text
+Validate
+DryRun
+Approval
+Apply
+Verify
+```
+
+`Verify` führt nach Apply erneut einen Dry Run aus und bricht ab, wenn noch `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` erkannt wird.
+
+### Bevorzugte Pipeline-Identität
+
+Zielname der Azure-DevOps-Service-Connection:
+
+```text
+sc-platform-bootstrap-azdo
+```
+
+Bevorzugte Authentifizierung:
+
+```text
+Microsoft Entra Workload Identity Federation
++ AzureCLI@3
++ connectionType: azureDevOps
+```
+
+Keine langlebigen PATs oder Client Secrets als produktiver Standard.
+
+### Bereits im Repository implementiert
+
+- Dual-Runtime-Erkennung Local/Pipeline
+- lokale Selbstheilungslogik bleibt erhalten
+- nicht-interaktiver Pipeline-Modus
+- AzureCLI@3-/Service-Connection-Unterstützung
+- `System.AccessToken`-Fallback
+- `pipelines/customer-onboarding.yml`
+- Validate → Dry Run → Approval → Apply → Verify
+- `docs/Techniker-Workflow.md`
+
+### Noch offen / nicht runtime-verifiziert
+
+- Service Connection `sc-platform-bootstrap-azdo` in Azure DevOps anlegen
+- WIF konfigurieren
+- minimale Azure-DevOps-Rechte der Service-Connection-Identität festlegen und zuweisen
+- Pipeline aus `/pipelines/customer-onboarding.yml` in `00-Platform` registrieren
+- Pipeline-Dry-Run tatsächlich ausführen
+- Apply gegen Test-Provisionierung tatsächlich ausführen
+- Post-Apply-Idempotenzprüfung tatsächlich verifizieren
+
+Bis diese Azure-DevOps-seitigen Schritte durchgeführt wurden, ist der Technikerweg **code-seitig implementiert, aber noch nicht produktiv verifiziert**.
