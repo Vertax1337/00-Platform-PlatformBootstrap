@@ -14,6 +14,8 @@ param(
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9-]{0,63}$')]
     [string]$CustomerSlug,
 
+    # Documentation capabilities only. IaC products such as AVD/Vaultwarden
+    # are intentionally not accepted by this customer-documentation onboarding.
     # Accept both native PowerShell arrays and comma/semicolon-separated values
     # passed through pwsh.exe -File, e.g.:
     # -Modules AzureDocumentation,OPNsenseDocumentation
@@ -79,7 +81,7 @@ function New-CustomerScaffold {
         [Parameter(Mandatory)][string]$Number,
         [Parameter(Mandatory)][string]$Slug,
         [string]$AzureTenantId,
-        [string[]]$EnabledModules,
+        [string[]]$EnabledDocumentationModules,
         [object[]]$FirewallDefinitions
     )
 
@@ -91,13 +93,10 @@ function New-CustomerScaffold {
 
     New-Item -ItemType Directory -Path $base -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $base 'documentation') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $base 'infrastructure') -Force | Out-Null
 
     $moduleMap = @{
-        AzureDocumentation    = $EnabledModules -contains 'AzureDocumentation'
-        OPNsenseDocumentation = $EnabledModules -contains 'OPNsenseDocumentation'
-        AVD                   = $EnabledModules -contains 'AVD'
-        Vaultwarden           = $EnabledModules -contains 'Vaultwarden'
+        AzureDocumentation    = $EnabledDocumentationModules -contains 'AzureDocumentation'
+        OPNsenseDocumentation = $EnabledDocumentationModules -contains 'OPNsenseDocumentation'
     }
 
     $tenantValue = if ([string]::IsNullOrWhiteSpace($AzureTenantId)) { 'null' } else { $AzureTenantId }
@@ -110,11 +109,9 @@ function New-CustomerScaffold {
         "  project: `"$ProjectName`"",
         "  tenantId: $tenantValue",
         '',
-        'modules:',
+        'documentationModules:',
         "  azureDocumentation: $($moduleMap.AzureDocumentation.ToString().ToLowerInvariant())",
         "  opnsenseDocumentation: $($moduleMap.OPNsenseDocumentation.ToString().ToLowerInvariant())",
-        "  avd: $($moduleMap.AVD.ToString().ToLowerInvariant())",
-        "  vaultwarden: $($moduleMap.Vaultwarden.ToString().ToLowerInvariant())",
         '',
         $(if ($FirewallDefinitions.Count) { 'firewalls:' } else { 'firewalls: []' })
     )
@@ -165,20 +162,6 @@ opnsense:
 "@ | Set-Content -Path (Join-Path $base 'documentation\opnsense.yml') -Encoding utf8
     }
 
-    if ($moduleMap.AVD) {
-        $avdDir = Join-Path $base 'infrastructure\avd'
-        New-Item -ItemType Directory -Path $avdDir -Force | Out-Null
-        "Kundenspezifische, nicht-geheime Parameter für 20-IaC/AVD-Accelerator." |
-            Set-Content -Path (Join-Path $avdDir 'README.md') -Encoding utf8
-    }
-
-    if ($moduleMap.Vaultwarden) {
-        $vwDir = Join-Path $base 'infrastructure\vaultwarden'
-        New-Item -ItemType Directory -Path $vwDir -Force | Out-Null
-        "Kundenspezifische, nicht-geheime Parameter für 20-IaC/Vaultwarden." |
-            Set-Content -Path (Join-Path $vwDir 'README.md') -Encoding utf8
-    }
-
     return $base
 }
 
@@ -208,11 +191,25 @@ function Expand-BSSEListArgument {
 $Modules = @(Expand-BSSEListArgument -Values $Modules)
 $Firewalls = @(Expand-BSSEListArgument -Values $Firewalls)
 
+$iacProducts = @(
+    $Modules | Where-Object { $_ -in @('AVD','Vaultwarden','AVD-Accelerator') }
+)
+
+if ($iacProducts.Count) {
+    throw @"
+AVD/Vaultwarden sind IaC-Produkte und keine Dokumentationsmodule.
+Sie dürfen nicht über New-BSSECustomerProject.ps1 bzw. die Customer-Onboarding-Dokumentationspipeline aktiviert werden.
+
+Angefordert: $($iacProducts -join ', ')
+
+IaC-Deployments werden getrennt unter 20-IaC mit eigenen Deployment-Pipelines,
+Service Connections, Plan/What-If, Approval und Deploy/Verify behandelt.
+"@
+}
+
 $allowedModules = @(
     'AzureDocumentation',
-    'OPNsenseDocumentation',
-    'AVD',
-    'Vaultwarden'
+    'OPNsenseDocumentation'
 )
 
 $invalidModules = @(
@@ -220,7 +217,7 @@ $invalidModules = @(
 )
 
 if ($invalidModules.Count) {
-    throw "Ungültige Module: $($invalidModules -join ', '). Erlaubt sind: $($allowedModules -join ', ')."
+    throw "Ungültige Dokumentationsmodule: $($invalidModules -join ', '). Erlaubt sind: $($allowedModules -join ', ')."
 }
 
 # Remove duplicate entries while preserving first occurrence order.
@@ -262,7 +259,6 @@ $json = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
     '--output','json',
     '--only-show-errors'
 )
-
 $projects = @((($json | ConvertFrom-Json).value) | ForEach-Object { $_.name })
 
 # CustomerNumber is the stable technical identity. If the company was renamed,
@@ -298,14 +294,14 @@ else {
 $firewallDefinitions = @(Get-FirewallDefinitions -Names $Firewalls -CustomerProjectSlug $effectiveCustomerSlug)
 
 Write-Host ""
-Write-Host "BSSE Customer Onboarding" -ForegroundColor Cyan
-Write-Host "Customer number: $CustomerNumber"
-Write-Host "Customer name:   $CustomerName"
-Write-Host "Project:         $projectName"
-Write-Host "Modules:         $(if ($Modules.Count) { $Modules -join ', ' } else { '<none selected yet>' })"
-Write-Host "Tenant ID:       $(if ($TenantId) { $TenantId } else { '<not specified>' })"
-Write-Host "Firewalls:       $(if ($firewallDefinitions.Count) { ($firewallDefinitions.Name -join ', ') } else { '<none>' })"
-Write-Host "Mode:            $(if ($Apply) { 'APPLY' } else { 'DRY RUN' })"
+Write-Host "BSSE Customer Onboarding - Documentation" -ForegroundColor Cyan
+Write-Host "Customer number:       $CustomerNumber"
+Write-Host "Customer name:         $CustomerName"
+Write-Host "Project:               $projectName"
+Write-Host "Documentation modules: $(if ($Modules.Count) { $Modules -join ', ' } else { '<none selected>' })"
+Write-Host "Tenant ID:             $(if ($TenantId) { $TenantId } else { '<not specified>' })"
+Write-Host "Firewalls:             $(if ($firewallDefinitions.Count) { ($firewallDefinitions.Name -join ', ') } else { '<none>' })"
+Write-Host "Mode:                  $(if ($Apply) { 'APPLY' } else { 'DRY RUN' })"
 Write-Host ""
 
 if ($projectExists) {
@@ -443,7 +439,7 @@ else {
 }
 
 Write-Host ""
-Write-Host "Module plan:" -ForegroundColor Cyan
+Write-Host "Documentation plan:" -ForegroundColor Cyan
 
 if ($Modules -contains 'AzureDocumentation') {
     Write-Host "  [MODULE] Azure documentation" -ForegroundColor Green
@@ -460,18 +456,8 @@ if ($Modules -contains 'OPNsenseDocumentation') {
     }
 }
 
-if ($Modules -contains 'AVD') {
-    Write-Host "  [MODULE] AVD Accelerator IaC" -ForegroundColor Green
-    Write-Host "           Service Connection target: sc-cust$CustomerNumber-avd-deploy"
-}
-
-if ($Modules -contains 'Vaultwarden') {
-    Write-Host "  [MODULE] Vaultwarden IaC" -ForegroundColor Green
-    Write-Host "           Service Connection target: sc-cust$CustomerNumber-vaultwarden-deploy"
-}
-
 if (-not $Modules.Count) {
-    Write-Host "  No modules selected. This is valid; modules can be added later." -ForegroundColor DarkGray
+    Write-Host "  No documentation module selected. Customer base provisioning / firewall backup can still be valid." -ForegroundColor DarkGray
 }
 
 if ($firewallDefinitions.Count -and ($Modules -notcontains 'OPNsenseDocumentation')) {
@@ -487,11 +473,11 @@ if ($Apply) {
         -Number $CustomerNumber `
         -Slug $effectiveCustomerSlug `
         -AzureTenantId $TenantId `
-        -EnabledModules $Modules `
+        -EnabledDocumentationModules $Modules `
         -FirewallDefinitions $firewallDefinitions
 
     Write-Host ""
-    Write-Host "[GENERATED] Local CustomerConfiguration scaffold:" -ForegroundColor Green
+    Write-Host "[GENERATED] Local CustomerConfiguration documentation scaffold:" -ForegroundColor Green
     Write-Host "            $scaffold"
 }
 
@@ -500,12 +486,14 @@ if (-not $Apply) {
     Write-Host "Dry Run abgeschlossen. Es wurden keine Azure-DevOps-Objekte verändert." -ForegroundColor Cyan
 }
 else {
-    Write-Host "Customer project base successfully created/verified." -ForegroundColor Cyan
+    Write-Host "Customer project/documentation base successfully created/verified." -ForegroundColor Cyan
 }
 
 Write-Host ""
-Write-Host "Firewall security boundary:" -ForegroundColor Yellow
+Write-Host "Architecture boundary:" -ForegroundColor Yellow
+Write-Host "- AzureDocumentation and OPNsenseDocumentation belong to the documentation platform."
+Write-Host "- AVD and Vaultwarden are IaC products under 20-IaC and are NOT deployed by this workflow."
 Write-Host "- Firewall-* repositories contain RAW confidential configuration."
-Write-Host "- Bootstrap writes NO content to these repositories."
+Write-Host "- Bootstrap writes NO content to Firewall-* repositories."
 Write-Host "- Repository-level permissions should be more restrictive than ordinary customer source repositories."
 Write-Host "- Raw configurations must never be copied into Documentation or 10-Automation."
