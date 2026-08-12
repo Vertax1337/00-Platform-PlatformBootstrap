@@ -1,210 +1,265 @@
-# Customer-Onboarding – einmaliges Azure-DevOps-Setup
+# Customer-Onboarding – Self-Hosting-Erstinitialisierung
 
 ## Zweck
 
-Diese Anleitung beschreibt die einmalige Plattformkonfiguration für den zentralen Technikerweg:
+Der normale Techniker soll Kunden später ausschließlich zentral über Azure DevOps onboarden:
 
 ```text
 00-Platform / Customer-Onboarding
 ```
 
-Der normale Techniker benötigt danach keinen lokalen Clone des `PlatformBootstrap`-Repositories.
+Eine **komplett neue Plattform** besitzt diese Pipeline, ihre Service Connection und die dafür benötigte Dienstidentität naturgemäß noch nicht. Deshalb ist nur die Erstinitialisierung lokal.
 
-Die Pipeline verwendet:
+Der lokale Einstieg bleibt:
 
-```text
-AzureCLI@3
-connectionType: azureDevOps
-Service Connection: sc-platform-bootstrap-azdo
-Microsoft Entra Workload Identity Federation
+```powershell
+pwsh.exe -ExecutionPolicy Bypass `
+  -File ".\bootstrap\Start-BSSECustomerOnboarding.ps1"
 ```
 
-## Architekturgrenze
+Dieses Frontend prüft **vor jeder Kundenabfrage** die Self-Hosting-Dependencies über:
 
-`Customer-Onboarding` behandelt ausschließlich:
+```text
+bootstrap/Initialize-BSSEPlatformDependencies.ps1
+```
 
-- Kundenprojekt / Kunden-Repositories,
-- `AzureDocumentation`,
-- `OPNsenseDocumentation`,
-- optionale `Firewall-*` RAW-Repositories,
-- persistente Initialisierung von `CustomerConfiguration`.
+## Voraussetzungen, die der Bootstrap nicht selbst erzeugt
 
-AVD und Vaultwarden sind IaC-Produkte unter `20-IaC` und ausdrücklich nicht Bestandteil dieses Workflows.
+Die Automatisierung beginnt innerhalb einer bereits existierenden Azure-DevOps-Organisation.
 
-## 1. Microsoft-Entra-Identität
+Erforderlich sind daher vor dem allerersten Lauf:
 
-Für `sc-platform-bootstrap-azdo` wird eine dedizierte Microsoft-Entra-Dienstidentität verwendet.
+- die Azure-DevOps-Organisation, z. B. `https://dev.azure.com/BSSE-CloudOps/`, existiert bereits,
+- der lokale Erstinstallations-Administrator kann sich gegen die Organisation authentifizieren,
+- der lokale Erstinstallations-Administrator besitzt die nötigen Microsoft-Entra-Rechte zum Erstellen einer App Registration / eines Service Principals,
+- der lokale Erstinstallations-Administrator darf in Azure DevOps Projekte und die benötigten Plattformberechtigungen verwalten,
+- Azure CLI, Azure-DevOps-CLI-Extension, PowerShell und Git sind lokal verfügbar beziehungsweise werden im Rahmen der bestehenden Bootstraplogik geprüft.
 
-Empfohlener Name:
+Der Bootstrap **eskaliert den ausführenden Administrator nicht selbst**. Fehlen diese Ausgangsrechte, bricht er mit einer eindeutigen Fehlermeldung ab.
+
+## Erstinstallations-Ablauf
+
+```text
+Start-BSSECustomerOnboarding.ps1
+        ↓
+Dependency Dry Run
+        ↓
+Plattform vollständig?
+   ├─ Ja → direkt Customer-Onboarding
+   └─ Nein
+        ↓
+PLATFORM INITIALIZATION REQUIRED
+        ↓
+separate lokale Freigabe
+        ↓
+Initialize-BSSEPlatformDependencies.ps1 -Apply
+        ↓
+Dependency Verify / Dry Run
+        ↓
+erst danach Customer-Onboarding
+```
+
+Die Plattforminitialisierung ist damit bewusst von der späteren Kundenfreigabe getrennt.
+
+## Automatisch verwaltete Dependencies
+
+### 1. Core-Projekte und Repositories
+
+Der Dependency-Bootstrap verwendet den bestehenden idempotenten Core-Bootstrap:
+
+```text
+bootstrap/New-BSSEAzureDevOpsCore.ps1
+```
+
+Damit werden fehlende Core-Projekte/-Repositories geplant beziehungsweise bei Freigabe erstellt.
+
+### 2. `00-Platform/PlatformBootstrap` als Ausführungsquelle
+
+Ist das Azure-Repo vollständig leer, darf es beim Erstaufbau aus dem lokalen **committed** Source-of-Truth initialisiert werden:
+
+```text
+lokaler PlatformBootstrap HEAD
+        ↓
+00-Platform / PlatformBootstrap / main
+```
+
+Sicherheitsregeln:
+
+- lokale uncommitted Änderungen → `BLOCKED`,
+- Azure-Repo leer → `PLAN` / bei Apply initialisieren,
+- Azure-Repo `main` identisch zum lokalen committed HEAD → `EXISTS`,
+- Azure-Repo nicht leer, aber ohne `main` → `BLOCKED`,
+- Azure-`main` weicht vom lokalen committed HEAD ab → `BLOCKED`,
+- niemals automatischer Force-Push.
+
+### 3. Dedizierte Microsoft-Entra-Dienstidentität
+
+Zielname:
 
 ```text
 sp-bsse-platform-bootstrap-azdo
 ```
 
-Keine persönliche Benutzeridentität und kein langlebiger PAT/Client-Secret als produktiver Standard.
+Wenn sie fehlt, erstellt der Bootstrap eine App Registration und den zugehörigen Service Principal **ohne Passwort/Client Secret**.
 
-## 2. Identität in Azure DevOps aufnehmen
+Der Bootstrap weist der Identität dabei keine Azure-RBAC-Rolle auf Subscription-/Resource-Ebene zu.
 
-In der Azure-DevOps-Organisation:
+Existieren mehrere Objekte mit exakt demselben Namen oder widersprüchliche bestehende Objekte, wird nicht geraten oder ersetzt.
 
-```text
-Organization Settings
-└── Users
-```
+### 4. Azure-DevOps-Mitgliedschaft
 
-Die Entra-Dienstidentität hinzufügen.
-
-Zugriffsebene:
+Die Dienstidentität wird mit folgendem Zielzustand in Azure DevOps aufgenommen:
 
 ```text
-Basic
+Access Level: Basic
+Project:      00-Platform
+Group:        Readers
 ```
 
-Sie muss außerdem Zugriff auf `00-Platform` erhalten; `Readers` reicht für die reine Projektzuordnung. Die eigentliche Pipelineauthentifizierung erfolgt über die Service Connection.
+Damit erhält sie nicht pauschal administrative Rechte im Plattformprojekt.
 
-## 3. Minimale organisationsweite Bootstrap-Berechtigung
+### 5. Minimale Collection-Berechtigung
 
-Die Identität wird **nicht** Mitglied von `Project Collection Administrators`.
-
-Stattdessen wird auf Collection-/Organization-Ebene ausschließlich folgende Berechtigung auf `Allow` gesetzt:
+Die Identität wird ausdrücklich **nicht** Mitglied von:
 
 ```text
-Create new projects
+Project Collection Administrators
 ```
 
-Das ist die benötigte organisationsweite Sonderberechtigung für den Kundenprojekt-Bootstrap.
-
-Der Ersteller eines neuen Azure-DevOps-Projekts wird automatisch Mitglied der `Project Administrators`-Gruppe dieses neu erstellten Projekts. Dadurch kann die Bootstrap-Identität anschließend innerhalb genau dieses neuen `CUST-*`-Projekts die erforderlichen Repository-Operationen durchführen.
-
-## 4. Azure-DevOps-Service-Connection erstellen
-
-In:
+Stattdessen erhält sie gezielt:
 
 ```text
-00-Platform
-└── Project Settings
-    └── Service connections
+Create new projects = Allow
 ```
 
-Neue Service Connection erstellen:
+Der Bootstrap ermittelt Security Namespace und Permission Bit zur Laufzeit. Auch der zu verwendende Collection-ACL-Token wird nicht geraten, sondern aus den effektiven Rechten des angemeldeten Erstinstallations-Administrators abgeleitet.
+
+Ein vorhandenes `Deny` wird nicht automatisch überschrieben.
+
+### 6. Azure-DevOps-WIF-Service-Connection
+
+Zielname:
 
 ```text
-Type: Azure DevOps
-Identity: sp-bsse-platform-bootstrap-azdo
-Name: sc-platform-bootstrap-azdo
-Authentication: Microsoft Entra Workload Identity Federation
+sc-platform-bootstrap-azdo
 ```
 
-Die Service Connection nicht organisationsweit für beliebige Pipelines freigeben. Nur die vorgesehene `Customer-Onboarding`-Pipeline autorisieren.
+Zielauthentifizierung:
 
-## 5. PlatformBootstrap nach Azure Repos synchronisieren
+```text
+Microsoft Entra Workload Identity Federation
+```
 
-Die Pipeline wird aus folgendem Azure-Repo registriert:
+Der Bootstrap verwendet für diesen neuen Azure-DevOps-Service-Connection-Typ **kein hartcodiertes undokumentiertes Schema**. Er fragt die in der Organisation verfügbaren Service-Endpoint-Type-Metadaten ab und akzeptiert nur einen eindeutigen `Azure DevOps`-Typ mit `WorkloadIdentityFederation`.
+
+Unbekannte erforderliche Endpoint-Inputs führen zu Fail Closed.
+
+### 7. Federated Credential
+
+Nachdem Azure DevOps für die Service Connection `issuer` und `subject` bereitstellt, wird auf der Entra-App das Credential angelegt:
+
+```text
+fic-sc-platform-bootstrap-azdo
+```
+
+Bestehendes Credential:
+
+- identisch → `EXISTS`,
+- abweichender Issuer/Subject/Audience → `BLOCKED`,
+- kein automatisches Ersetzen.
+
+### 8. Customer-Onboarding-Pipeline
+
+Die Pipeline wird aus:
 
 ```text
 00-Platform / PlatformBootstrap
-```
-
-Dort muss mindestens der aktuelle Stand enthalten sein, insbesondere:
-
-```text
-bootstrap/New-BSSECustomerProject.ps1
-bootstrap/Sync-BSSECustomerConfiguration.ps1
-bootstrap/BSSE.AzureDevOps.Common.ps1
 pipelines/customer-onboarding.yml
 ```
 
-Die GitHub-Engineering-Quelle und der Azure-DevOps-Ausführungsstand dürfen vor dem Test nicht auseinanderlaufen.
+idempotent als:
 
-## 6. Pipeline idempotent registrieren
+```text
+Customer-Onboarding
+```
 
-Dry Run:
+registriert. Der erste Run wird bei der Registrierung bewusst nicht ausgelöst.
+
+Danach wird ausschließlich diese Pipeline für die Verwendung von:
+
+```text
+sc-platform-bootstrap-azdo
+```
+
+autorisiert. Es gibt keine pauschale Freigabe für alle Pipelines.
+
+## Pipeline darf sich nicht selbst privilegieren
+
+Folgendes ist ausdrücklich blockiert:
+
+```powershell
+Initialize-BSSEPlatformDependencies.ps1 -Apply
+```
+
+wenn der Aufruf aus Azure Pipelines erfolgt.
+
+Die zentrale Pipeline **verwendet** die vorhandenen Dependencies, darf aber ihre eigene Identität, WIF-Verbindung oder organisationsweiten Berechtigungen nicht selbst erzeugen oder erweitern.
+
+## Readiness prüfen
+
+Nach der Erstinitialisierung kann ohne Kundenänderung geprüft werden:
 
 ```powershell
 pwsh.exe -ExecutionPolicy Bypass `
-  -File ".\bootstrap\Register-BSSECustomerOnboardingPipeline.ps1"
+  -File ".\bootstrap\Test-BSSECustomerOnboardingReadiness.ps1"
 ```
 
-Erwartung bei vorhandener Service Connection und noch fehlender Pipeline:
+Der Readiness-Check verwendet den Dependency-Bootstrap ausschließlich ohne `-Apply`.
 
 ```text
-[OK] Repository 00-Platform/PlatformBootstrap vorhanden.
-[OK] Service Connection sc-platform-bootstrap-azdo vorhanden.
-[PLAN] Register pipeline Customer-Onboarding ...
+kein PLAN / kein BLOCKED
+→ Plattform-Dependencies bereit
+
+PLAN
+→ Dependency fehlt noch
+
+BLOCKED / Exception
+→ Drift, fehlende Rechte oder nicht sicher auflösbarer Zustand
 ```
 
-Apply:
+## Architekturgrenze Dokumentation / IaC
 
-```powershell
-pwsh.exe -ExecutionPolicy Bypass `
-  -File ".\bootstrap\Register-BSSECustomerOnboardingPipeline.ps1" `
-  -Apply
-```
+Der Self-Hosting-Bootstrap ändert nichts an der bestehenden Trennung.
 
-Der erste Pipeline-Lauf wird bewusst nicht automatisch gestartet.
-
-Wiederholter Lauf:
+Customer-Onboarding behandelt ausschließlich:
 
 ```text
-[EXISTS] Pipeline Customer-Onboarding (no change)
+AzureDocumentation
+OPNsenseDocumentation
+CustomerConfiguration
+Firewall-* RAW-Repositories
 ```
 
-## 7. CustomerConfiguration-Persistenz
-
-Beide Ausführungswege verwenden:
+Nicht Bestandteil:
 
 ```text
-bootstrap/Sync-BSSECustomerConfiguration.ps1
+AVD-Accelerator
+Vaultwarden
 ```
 
-Verhalten:
+Diese bleiben IaC-Produkte unter `20-IaC` mit eigenen Deployment-Identitäten und Deployment-Pipelines.
 
-- fehlende Bootstrap-Zieldateien → `[PLAN]` / bei Apply hinzufügen,
-- identische vorhandene Dateien → `[EXISTS]`,
-- abweichende vorhandene Bootstrap-Zieldateien → `[BLOCKED]`,
-- kein automatisches Überschreiben vorhandener abweichender Kundenkonfiguration,
-- Git-Push ausschließlich nach erfolgreichem Vergleich,
-- OAuth-/Entra-Token wird nicht in Remote-URLs geschrieben.
+## Runtime-Verifikationsstatus
 
-Damit ist `CustomerConfiguration` kein flüchtiges Agent-Artefakt mehr, sondern Bestandteil des kontrollierten Git-Zielzustands.
+Die Self-Hosting-Logik ist im Repository implementiert. **Noch nicht durch einen echten Erstinstallationslauf verifiziert** sind insbesondere:
 
-## 8. Fertiger Technikerablauf
+- die tatsächlich von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten für die neue Azure-DevOps-WIF-Service-Connection,
+- das reale Erstellen von `sp-bsse-platform-bootstrap-azdo`,
+- das reale Service-Principal-Entitlement in Azure DevOps,
+- die tatsächliche `Create new projects`-ACL-Zuweisung,
+- die reale Erstellung von `sc-platform-bootstrap-azdo`,
+- das reale federated credential,
+- die Pipeline-spezifische Service-Connection-Autorisierung,
+- der anschließende WIF-Pipeline-Run.
 
-```text
-Run pipeline
-    ↓
-Parameter eingeben
-    ↓
-Validate
-    ↓
-Dry Run Customer Boundary
-    ↓
-Dry Run CustomerConfiguration
-    ↓
-keine Änderungen? → erfolgreich beenden
-    ↓
-Änderungen vorhanden
-    ↓
-Manual Approval
-    ↓
-Apply Customer Boundary
-    ↓
-Apply CustomerConfiguration
-    ↓
-Post-Apply Dry Run beider Bereiche
-    ↓
-Idempotenz verifizieren
-```
-
-## 9. Noch nicht als verifiziert markieren
-
-Die Implementierung im Repository darf erst nach einem realen Test als runtime-verifiziert gelten.
-
-Vor diesem Test sind folgende Aussagen ausschließlich code-/konfigurationsseitig vorbereitet:
-
-- WIF-Authentifizierung funktioniert mit der realen Service Connection,
-- die Identität besitzt exakt die nötigen Berechtigungen,
-- Projekt-/Repository-Provisionierung funktioniert aus AzureCLI@3,
-- Git-Push in `CustomerConfiguration` funktioniert mit dem Entra-Token,
-- Approval-/Output-Variable-Bedingung verhält sich im realen Pipeline-Run wie vorgesehen,
-- Post-Apply-Verify ist tatsächlich idempotent.
+Diese Punkte dürfen erst nach dem vorgesehenen gemeinsamen Erstinstallations-/Runtime-Test als tatsächlich bestätigt gelten.
