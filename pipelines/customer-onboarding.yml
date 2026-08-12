@@ -150,6 +150,7 @@ stages:
     - task: ManualValidation@1
       timeoutInMinutes: 1440
       inputs:
+        notifyUsers: ''
         instructions: |
           Review the complete Dry Run output.
           Approve only if project, repositories, modules and firewall repositories match the intended customer onboarding and no unexpected CREATE/RENAME operation is shown.
