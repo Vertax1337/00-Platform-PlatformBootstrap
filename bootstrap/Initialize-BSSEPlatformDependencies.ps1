@@ -135,6 +135,26 @@ function Get-BSSEEntraIdentityState {
     }
 }
 
+function Wait-BSSEEntraServicePrincipal {
+    param(
+        [Parameter(Mandatory)][string]$DisplayName,
+        [int]$Attempts = 10,
+        [int]$DelaySeconds = 2
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        $state = Get-BSSEEntraIdentityState -DisplayName $DisplayName
+        if ($state.ServicePrincipal) {
+            return $state.ServicePrincipal
+        }
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    return $null
+}
+
 function Ensure-BSSEEntraIdentity {
     param([Parameter(Mandatory)][string]$DisplayName)
 
@@ -156,7 +176,11 @@ function Ensure-BSSEEntraIdentity {
         }
 
         Write-Host "[PLAN] Create passwordless Entra app/service principal $DisplayName" -ForegroundColor Yellow
-        return $null
+        return [pscustomobject]@{
+            appId       = $null
+            id          = $null
+            displayName = $DisplayName
+        }
     }
 
     if ($state.Application) {
@@ -192,13 +216,13 @@ diese Berechtigung nicht selbst.
 "@
     }
 
-    $state = Get-BSSEEntraIdentityState -DisplayName $DisplayName
-    if (-not $state.ServicePrincipal) {
-        throw "Entra service principal '$DisplayName' wurde nach der Erstellung nicht wiedergefunden."
+    $servicePrincipal = Wait-BSSEEntraServicePrincipal -DisplayName $DisplayName
+    if (-not $servicePrincipal) {
+        throw "Entra service principal '$DisplayName' wurde nach der Erstellung nicht rechtzeitig wiedergefunden."
     }
 
     Write-Host "[OK] Entra service principal $DisplayName erstellt." -ForegroundColor Green
-    return $state.ServicePrincipal
+    return $servicePrincipal
 }
 
 function Get-BSSEAzureDevOpsGraphServicePrincipals {
@@ -235,26 +259,50 @@ function Get-BSSEAzureDevOpsGraphServicePrincipals {
     return @($all)
 }
 
+function Wait-BSSEAzureDevOpsGraphServicePrincipal {
+    param(
+        [Parameter(Mandatory)][string]$OrganizationName,
+        [Parameter(Mandatory)][string]$OriginId,
+        [int]$Attempts = 10,
+        [int]$DelaySeconds = 2
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        $matches = @(Get-BSSEAzureDevOpsGraphServicePrincipals -OrganizationName $OrganizationName) |
+            Where-Object { $_.originId -eq $OriginId }
+
+        if ($matches.Count -gt 1) {
+            throw "Azure DevOps enthält mehrere Graph-Service-Principals für Entra objectId $OriginId."
+        }
+        if ($matches.Count -eq 1) {
+            return $matches[0]
+        }
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    return $null
+}
+
 function Ensure-BSSEAzureDevOpsEntitlement {
     param(
-        [Parameter(Mandatory)]$EntraServicePrincipal,
+        [AllowNull()]$EntraServicePrincipal,
         [Parameter(Mandatory)]$ProjectInfo,
         [Parameter(Mandatory)][string]$OrganizationName
     )
 
-    if (-not $EntraServicePrincipal.id) {
+    if (-not $EntraServicePrincipal -or -not $EntraServicePrincipal.id) {
         Write-Host "[PLAN] Add $IdentityName to Azure DevOps: Basic + $Project/Readers" -ForegroundColor Yellow
         return $null
     }
 
-    $graphPrincipals = @(Get-BSSEAzureDevOpsGraphServicePrincipals -OrganizationName $OrganizationName)
-    $matches = @($graphPrincipals | Where-Object { $_.originId -eq $EntraServicePrincipal.id })
+    $graphPrincipal = Wait-BSSEAzureDevOpsGraphServicePrincipal `
+        -OrganizationName $OrganizationName `
+        -OriginId $EntraServicePrincipal.id `
+        -Attempts 1
 
-    if ($matches.Count -gt 1) {
-        throw "Azure DevOps enthält mehrere Graph-Service-Principals für Entra objectId $($EntraServicePrincipal.id)."
-    }
-
-    if ($matches.Count -eq 0) {
+    if (-not $graphPrincipal) {
         if (-not $Apply) {
             Write-Host "[PLAN] Add $IdentityName to Azure DevOps: Basic + $Project/Readers" -ForegroundColor Yellow
             return $null
@@ -285,14 +333,14 @@ function Ensure-BSSEAzureDevOpsEntitlement {
             throw "Azure DevOps service-principal entitlement konnte nicht angelegt werden: $($response | ConvertTo-Json -Depth 20)"
         }
 
-        $graphPrincipals = @(Get-BSSEAzureDevOpsGraphServicePrincipals -OrganizationName $OrganizationName)
-        $matches = @($graphPrincipals | Where-Object { $_.originId -eq $EntraServicePrincipal.id })
-        if ($matches.Count -ne 1) {
-            throw "Azure DevOps service principal wurde nach Entitlement-Erstellung nicht eindeutig wiedergefunden."
+        $graphPrincipal = Wait-BSSEAzureDevOpsGraphServicePrincipal `
+            -OrganizationName $OrganizationName `
+            -OriginId $EntraServicePrincipal.id
+
+        if (-not $graphPrincipal) {
+            throw "Azure DevOps service principal wurde nach Entitlement-Erstellung nicht rechtzeitig wiedergefunden."
         }
     }
-
-    $graphPrincipal = $matches[0]
 
     $storageUrl = "https://vssps.dev.azure.com/$OrganizationName/_apis/graph/storagekeys/$([uri]::EscapeDataString($graphPrincipal.descriptor))?api-version=7.1"
     $storage = Invoke-BSSEDevOpsRest -Method GET -Url $storageUrl
@@ -1124,7 +1172,7 @@ Ensure-BSSECreateProjectsPermission -GraphPrincipal $graphSp -Session $session
 
 Write-Host ''
 Write-Host 'Secretless Azure DevOps Service Connection:' -ForegroundColor Cyan
-if (-not $entraSp -or -not $entraSp.id) {
+if (-not $entraSp.id) {
     Write-Host "[PLAN] Create $ServiceConnectionName after Entra identity exists" -ForegroundColor Yellow
     Write-Host "[PLAN] Create federated credential after Service Connection yields issuer/subject" -ForegroundColor Yellow
     Write-Host "[PLAN] Register/authorize $PipelineName after Service Connection exists" -ForegroundColor Yellow
