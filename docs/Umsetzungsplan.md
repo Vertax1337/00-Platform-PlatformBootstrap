@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.7
+**Version:** 1.8
 
 ## 1. Core
 
@@ -29,11 +29,12 @@
 
 ### `PlatformBootstrap`
 
-Source of Truth für den Aufbau der Azure-DevOps-Plattform.
+Source of Truth für Aufbau und Weiterentwicklung der Azure-DevOps-Plattform.
 
 Enthält:
 
 - Core-Bootstrap,
+- Self-Hosting-/Dependency-Initialisierung,
 - Kunden-Onboarding,
 - Firewall-Repo-Onboarding,
 - gemeinsame Azure-DevOps-CLI-Authentifizierungslogik,
@@ -60,11 +61,6 @@ Wiederverwendbare Sicherheits-, Read-only-, Sanitization- und Secret-Prüfungen.
 ### `SharedModules`
 
 Technische Bibliotheken, die von mehreren Automationen/IaC-Komponenten verwendet werden.
-
-### Upgrade-Verhalten
-
-Bei einer bestehenden v1.4.x-Struktur wird `PlatformBootstrap` nur ergänzt.
-`PipelineTemplates` wird nicht umbenannt und vorhandener Repository-Inhalt bleibt unverändert.
 
 ## 2. Kundenidentität
 
@@ -106,14 +102,6 @@ Dieses Repository:
 - wird vom Bootstrap leer erzeugt,
 - erhält vom Bootstrap niemals README, `.gitignore`, YAML oder Initial-Commit.
 
-### Nicht unter `10-Automation`
-
-Es gibt bewusst kein zentrales Kundenbackup-Repo wie:
-
-```text
-10-Automation/OPNsenseBackup
-```
-
 Das Repository `10-Automation-OPNsenseDocumentation` enthält ausschließlich generischen Programmcode für Sanitization, Validierung und Normalisierung.
 
 ### Datenfluss
@@ -145,18 +133,14 @@ CUST-4711-Cannon-Deutschland-GmbH
 
 ### Dokumentationsplattform
 
-Folgende Fähigkeiten gehören zum Customer-/Dokumentations-Onboarding:
-
 ```text
 AzureDocumentation
 OPNsenseDocumentation
 ```
 
-Sie verwenden die Read-only-/Sanitization-Kette der Dokumentationsplattform.
+Diese Fähigkeiten gehören zum Customer-/Dokumentations-Onboarding und verwenden die Read-only-/Sanitization-Kette der Dokumentationsplattform.
 
 ### IaC-Produkte
-
-Folgende Komponenten sind **keine Dokumentationsmodule**:
 
 ```text
 AVD-Accelerator
@@ -169,35 +153,48 @@ Damit gilt ausdrücklich:
 
 - `New-BSSECustomerProject.ps1` provisioniert keine AVD- oder Vaultwarden-Deployments.
 - `pipelines/customer-onboarding.yml` bietet keine AVD-/Vaultwarden-Auswahl an.
-- Customer-Onboarding und IaC-Deployment verwenden getrennte Service Connections und getrennte Sicherheitsmodelle.
-- IaC folgt weiterhin `Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify`.
-
-Firewall-Backup-Repositories sind bewusst vom OPNsenseDocumentation-Modul entkoppelt.
+- Customer-Onboarding und IaC-Deployment verwenden getrennte Service Connections und Sicherheitsmodelle.
+- IaC folgt `Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify`.
 
 ## 7. Security
 
 `Firewall-*` erhält eine höhere Schutzklasse als normales `CustomerConfiguration`.
 
-Ziel für den nächsten Security-Schritt:
+Für die Dokumentationsplattform bleiben vorgesehen:
 
 - Repository-Zugriff nur für definierte Admins und Pipeline-Identität,
-- kein allgemeiner Contributor-Zugriff,
-- keine unkontrollierten lokalen Klone,
+- kein allgemeiner Contributor-Zugriff auf RAW-Repositories,
 - kein Raw-Config-Publishing,
-- Pipeline muss vor KI/Dokumentation sanitizen und validieren.
+- Sanitization/Validation vor Dokumentation/KI.
 
 IaC verwendet getrennte Deployment-Identitäten und darf nicht über die Dokumentations-/Customer-Onboarding-Identität deployen.
 
-Für den PlatformBootstrap-Technikerweg gilt zusätzlich:
+### PlatformBootstrap-Identität
 
-- dedizierte Entra-Dienstidentität,
-- `Basic`-Zugriff in Azure DevOps,
-- Zugriff auf `00-Platform`,
+Zielidentität:
+
+```text
+sp-bsse-platform-bootstrap-azdo
+```
+
+Ziel-Service-Connection:
+
+```text
+sc-platform-bootstrap-azdo
+```
+
+Least-Privilege-Zustand:
+
+- secretless Entra-App/Service Principal,
+- `Basic` in Azure DevOps,
+- `00-Platform / Readers`,
 - Collection-Berechtigung `Create new projects = Allow`,
-- keine pauschale Mitgliedschaft in `Project Collection Administrators`,
-- Service Connection nur für die vorgesehene Pipeline autorisieren.
+- **keine** Mitgliedschaft in `Project Collection Administrators`,
+- WIF-Service-Connection ausschließlich für `Customer-Onboarding` autorisiert.
 
-## 8. Idempotenz
+Ein vorhandenes Deny oder widersprüchliche bestehende Identitäts-/Endpointkonfiguration wird nicht automatisch überschrieben.
+
+## 8. Idempotenz / Bestandsschutz
 
 Erneute Bootstrap-Läufe:
 
@@ -216,6 +213,27 @@ identisch  → EXISTS
 abweichend → BLOCKED
 ```
 
+Für die Self-Hosting-Ausführungsquelle gilt:
+
+```text
+Azure PlatformBootstrap leer
+→ PLAN / Seed aus lokalem committed HEAD
+
+Azure main == lokaler committed HEAD
+→ EXISTS
+
+lokaler Working Tree dirty
+→ BLOCKED
+
+Azure main != lokaler committed HEAD
+→ BLOCKED
+
+nicht-leeres Azure Repo ohne main
+→ BLOCKED
+```
+
+Es gibt keinen automatischen Force-Push.
+
 ## 9. Repositorynamen im Projekt `10-Automation`
 
 ### Beschlossen
@@ -232,25 +250,89 @@ AzureInfrastructureCollector
 OPNsenseDocumentation
 ```
 
-### Keine globale Präfix-Konvention für andere Projekte
+Aus dieser Entscheidung wird keine globale `<Projekt>-<Repository>`-Konvention für andere Projekte abgeleitet.
 
-Die Präfixierung ist für die bestehenden Repositories unter `10-Automation` beschlossen. Daraus wird **keine automatische globale Umbenennung** der Repositories unter `00-Platform`, `20-IaC`, `99-LAB` oder den Kundenprojekten abgeleitet.
-
-### Idempotenz / Legacy-Schutz
-
-- `10-Automation-AzureInfrastructureCollector` wird als Sollzustand exakt erkannt.
-- `10-Automation-OPNsenseDocumentation` wird als Sollzustand exakt erkannt.
-- Legacy-Name `AzureInfrastructureCollector` wird nicht mehr provisioniert.
-- Legacy-Namen `OPNsenseDocumentation` / `OpenSenseDocumentation` werden nicht mehr provisioniert.
-- Falls ausschließlich ein Legacy-Name vorhanden ist, erzeugt der Bootstrap kein Duplikat und führt keine automatische Umbenennung durch.
-
-## 10. Zentraler Techniker-Workflow / Dual Runtime
+## 10. Self-Hosting Bootstrap / Erstinitialisierung
 
 ### Beschlossen
 
-Der normale Techniker soll das Bootstrap-Repository nicht lokal herunterladen oder pflegen müssen.
+Eine neue Plattform besitzt zu Beginn noch keine zentrale Customer-Onboarding-Pipeline und keine dafür nutzbare WIF-Service-Connection. Der allererste Lauf erfolgt daher lokal.
 
-Produktiver Zielweg:
+Das lokale Frontend prüft automatisch vor der Kundenabfrage:
+
+```text
+bootstrap/Initialize-BSSEPlatformDependencies.ps1
+```
+
+Ablauf:
+
+```text
+Start-BSSECustomerOnboarding.ps1
+    ↓
+Dependency Dry Run
+    ↓
+Dependencies vollständig?
+ ├─ Ja → Customer-Onboarding
+ └─ Nein
+      ↓
+PLATFORM INITIALIZATION REQUIRED
+      ↓
+separate lokale Freigabe
+      ↓
+Dependency Apply
+      ↓
+Dependency Verify
+      ↓
+Customer-Onboarding
+```
+
+### Was automatisch als Dependency behandelt wird
+
+```text
+Core-Projekte/-Repositories
+00-Platform/PlatformBootstrap Seed
+sp-bsse-platform-bootstrap-azdo
+Azure-DevOps-Service-Principal-Entitlement
+Basic + 00-Platform/Readers
+Create new projects = Allow
+sc-platform-bootstrap-azdo (WIF)
+fic-sc-platform-bootstrap-azdo
+Customer-Onboarding Pipeline
+pipeline-spezifische Service-Connection-Autorisierung
+```
+
+### Was nicht automatisch erzeugt wird
+
+Die Azure-DevOps-Organisation selbst ist eine äußere Voraussetzung und muss bereits existieren.
+
+Der lokale Erstinstallations-Administrator muss außerdem bereits über die notwendigen Entra-/Azure-DevOps-Rechte verfügen. Der Bootstrap erhöht die Rechte des ausführenden Administrators nicht selbst.
+
+### Privilege-Boundary
+
+`Initialize-BSSEPlatformDependencies.ps1 -Apply` ist aus Azure Pipelines blockiert.
+
+Damit gilt:
+
+```text
+lokaler Erstinstallations-Admin
+→ darf nach Dry Run + expliziter Freigabe Plattform-Dependencies herstellen
+
+Customer-Onboarding Pipeline
+→ darf vorhandene Dependencies verwenden
+→ darf sich selbst keine Identität oder organisationsweiten Rechte geben
+```
+
+### Runtime-Schema für Azure-DevOps-WIF
+
+Der neue Azure-DevOps-Service-Connection-Typ wird nicht mit einem geratenen undokumentierten JSON-Schema hartcodiert.
+
+Der Bootstrap fragt die Service-Endpoint-Type-Metadaten der Zielorganisation ab und akzeptiert ausschließlich einen eindeutigen `Azure DevOps`-Endpoint mit `WorkloadIdentityFederation`.
+
+Unbekannte erforderliche Inputs führen zu Fail Closed.
+
+## 11. Customer-Onboarding / Dual Runtime
+
+### Zentraler Technikerweg
 
 ```text
 Techniker
@@ -272,11 +354,13 @@ Apply
 Post-Apply Verify
 ```
 
-Für lokale Entwicklung/Regressionstests existiert parallel:
+### Lokaler Entwicklungs-/Regressionstestweg
 
 ```text
 bootstrap/Start-BSSECustomerOnboarding.ps1
 ```
+
+Nach erfolgreicher Dependency-Prüfung verwendet er dieselben fachlichen Parameter und Backend-Bausteine wie die Pipeline.
 
 Beide Wege verwenden:
 
@@ -285,9 +369,9 @@ bootstrap/New-BSSECustomerProject.ps1
 bootstrap/Sync-BSSECustomerConfiguration.ps1
 ```
 
-### Automatische Laufzeit-/Authentifizierungserkennung
+### Authentifizierung
 
-`BSSE.AzureDevOps.Common.ps1` unterscheidet selbstständig:
+`BSSE.AzureDevOps.Common.ps1` unterscheidet:
 
 ```text
 Local
@@ -307,15 +391,7 @@ Pipeline:
 - optional `SYSTEM_ACCESSTOKEN` als Kompatibilitätsfallback,
 - andernfalls Fail Closed.
 
-### Customer-Onboarding-Pipeline
-
-Repository-Datei:
-
-```text
-/pipelines/customer-onboarding.yml
-```
-
-Parameter:
+### Pipeline-Parameter
 
 ```text
 CustomerNumber
@@ -329,7 +405,7 @@ Firewalls
 
 AVD und Vaultwarden sind bewusst ausgeschlossen.
 
-Stages:
+### Pipeline-Stages
 
 ```text
 Validate
@@ -339,11 +415,11 @@ Apply
 Verify
 ```
 
-`DryRun` prüft sowohl Kundenboundary als auch `CustomerConfiguration` und setzt `hasChanges` als Stage-Output. Ohne `[PLAN]` werden Approval und Apply übersprungen.
+`DryRun` prüft Kundenboundary und `CustomerConfiguration` und setzt `hasChanges`. Ohne `[PLAN]` werden Approval und Apply übersprungen.
 
-`Verify` prüft nach Apply beide Bereiche erneut und bricht bei `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` ab.
+`Verify` bricht bei verbleibendem `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` ab.
 
-### Persistente CustomerConfiguration
+## 12. Persistente CustomerConfiguration
 
 Implementiert über:
 
@@ -359,68 +435,73 @@ Das Skript:
 - fügt nur fehlende Dateien hinzu,
 - blockiert abweichende vorhandene Zieldateien,
 - nutzt Git-Historie statt blindem Überschreiben,
-- bezieht für Git einen Azure-DevOps-OAuth-/Entra-Token ohne ihn in die Remote-URL zu schreiben.
+- verwendet OAuth-/Entra-Token ohne Token in der Remote-URL.
 
-### Pipeline-Registrierung
+## 13. Pipeline-Registrierung und Readiness
 
-Implementiert über:
+Pipeline-Registrierung:
 
 ```text
 bootstrap/Register-BSSECustomerOnboardingPipeline.ps1
 ```
 
-Das Skript prüft idempotent:
-
-- `00-Platform`,
-- `PlatformBootstrap`,
-- `sc-platform-bootstrap-azdo`,
-- vorhandene `Customer-Onboarding`-Pipeline.
-
-Fehlt nur die Pipeline, wird sie bei `-Apply` aus `pipelines/customer-onboarding.yml` registriert; der erste Run wird übersprungen.
-
-### Readiness
-
-Implementiert über:
+Readiness:
 
 ```text
 bootstrap/Test-BSSECustomerOnboardingReadiness.ps1
 ```
 
-Der Readiness-Check verändert keine Kundenobjekte und prüft die Voraussetzungen beider Wege.
+Der Readiness-Check verwendet den Self-Hosting-Dependency-Bootstrap ausschließlich im Dry-Run-/Verify-Modus.
+
+```text
+kein PLAN / kein BLOCKED → READY
+PLAN                    → Dependency fehlt
+BLOCKED / Fehler         → NOT READY
+```
+
+## 14. Implementierungsstatus
+
+### Bereits beschlossen
+
+- Dokumentationsplattform und IaC strikt getrennt.
+- Normaler Technikerweg erfolgt zentral über Azure DevOps.
+- Erstinitialisierung einer neuen Plattform erfolgt lokal.
+- Plattform-Dependencies werden als idempotenter Sollzustand behandelt.
+- privilegierte Dependency-Änderungen benötigen separaten lokalen Dry Run + Freigabe.
+- Pipeline darf sich nicht selbst privilegieren.
 
 ### Bereits im Repository implementiert
 
-- Dual-Runtime-Erkennung Local/Pipeline,
-- lokales interaktives Frontend,
-- fachlich identische Eingaben auf beiden Wegen,
-- lokale Dry-Run-/Approval-/Apply-/Verify-Kette,
-- zentrale Pipeline Validate → DryRun → Approval → Apply → Verify,
-- Approval/Apply nur bei tatsächlich geplanten Änderungen,
-- persistente `CustomerConfiguration` mit Bestandsschutz,
-- AzureCLI@3-/WIF-Zielmodell,
-- Pipeline-Registrierungsskript,
-- Readiness-Check,
-- harte Abgrenzung von AVD/Vaultwarden.
-
-### Noch Azure-DevOps-seitig einzurichten
-
-- dedizierte Entra-Dienstidentität für PlatformBootstrap,
-- Service Connection `sc-platform-bootstrap-azdo` mit WIF,
-- minimale Berechtigungen gemäß `docs/Customer-Onboarding-Setup.md`,
-- aktuellen `PlatformBootstrap`-Stand nach `00-Platform/PlatformBootstrap` synchronisieren,
-- Pipeline mit `Register-BSSECustomerOnboardingPipeline.ps1 -Apply` registrieren.
+- Core-Bootstrap,
+- Dual-Runtime-Erkennung,
+- `Initialize-BSSEPlatformDependencies.ps1`,
+- automatischer Dependency-Preflight im lokalen Frontend,
+- secretless Entra-Identitätsplanung/-erstellung,
+- Azure-DevOps-Entitlement Basic + Readers,
+- gezielte `Create new projects`-ACL,
+- dynamische WIF-Service-Endpoint-Type-Erkennung,
+- federated-credential-Management,
+- Pipeline-Registrierung und pipeline-spezifische Endpoint-Autorisierung,
+- lokaler und zentraler Customer-Onboarding-Workflow,
+- persistente `CustomerConfiguration`,
+- Readiness-Check.
 
 ### Noch nicht runtime-verifiziert
 
-Erst nach dem geplanten gemeinsamen Test dürfen absolut bestätigt werden:
+Bis zum echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut bestätigt:
 
-- reale WIF-Authentifizierung,
-- reale Rechte der Service-Connection-Identität,
+- reale Entra-App/SP-Erstellung im BSSE-Tenant,
+- reales Service-Principal-Entitlement in BSSE-CloudOps,
+- tatsächliche `Create new projects`-ACL-Zuweisung,
+- tatsächlich gelieferte Endpoint-Type-Metadaten für die Azure-DevOps-WIF-Service-Connection,
+- reale Erstellung von `sc-platform-bootstrap-azdo`,
+- reales federated credential,
+- pipeline-spezifische Service-Connection-Autorisierung,
+- WIF-Pipeline-Authentifizierung,
 - Git-Push nach `CustomerConfiguration`,
-- Stage-/Approval-/Output-Variable-Auswertung,
 - realer Apply-/Post-Apply-Idempotenzlauf.
 
-## 11. Separater IaC-Techniker-/Deployment-Weg
+## 15. Separater IaC-Techniker-/Deployment-Weg
 
 ### Bereits beschlossen
 
