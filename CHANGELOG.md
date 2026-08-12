@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.2
+
+- neues lokales interaktives Frontend `bootstrap/Start-BSSECustomerOnboarding.ps1`
+- lokale Eingabemaske entspricht fachlich der Azure-DevOps-Customer-Onboarding-Pipeline
+- lokaler Ablauf: Eingaben → Dry Run → Bestätigung → Apply → Post-Apply Verify
+- `[BLOCKED]` verhindert lokal automatisch ein Apply
+- ohne `[PLAN]` wird lokal kein Apply angeboten
+- lokaler und Pipeline-Weg verwenden weiterhin dasselbe Backend `New-BSSECustomerProject.ps1`
+- `docs/Techniker-Workflow.md` und `docs/Umsetzungsplan.md` aktualisiert
+
 ## v1.6.1
 
 - Architekturgrenze zwischen Dokumentationsplattform und IaC-Produkten korrigiert
