@@ -436,7 +436,7 @@ function Initialize-BSSEPipelineAzureDevOpsSession {
         }
     }
 
-    # Compatibility fallback: YAML may explicitly map $(System.AccessToken) to SYSTEM_ACCESSTOKEN.
+    # Compatibility fallback: YAML may explicitly map System.AccessToken to SYSTEM_ACCESSTOKEN.
     # az devops automatically consumes AZURE_DEVOPS_EXT_PAT for non-interactive authentication.
     if (-not [string]::IsNullOrWhiteSpace($env:SYSTEM_ACCESSTOKEN)) {
         Write-Host "[AUTO] Keine nutzbare Service-Connection-Session erkannt; System.AccessToken ist vorhanden." -ForegroundColor Cyan
@@ -477,7 +477,7 @@ Bevorzugter Zielzustand:
 - Azure DevOps Service Connection mit Microsoft Entra Workload Identity Federation
 
 Fallback:
-- $(System.AccessToken) im YAML explizit als SYSTEM_ACCESSTOKEN an den Skriptschritt mappen
+- System.AccessToken im YAML explizit als SYSTEM_ACCESSTOKEN an den Skriptschritt mappen
 
 Der Bootstrap versucht in einer Pipeline absichtlich weder 'az login' noch einen Browser-Fallback.
 "@
