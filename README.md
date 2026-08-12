@@ -1,4 +1,4 @@
-# BSSE Azure DevOps Platform – Bootstrap v1.8
+# BSSE Azure DevOps Platform – Bootstrap v1.9
 
 ## Zielmodell
 
@@ -51,6 +51,54 @@ AVD und Vaultwarden sind **keine** Customer-Onboarding-/Dokumentationsmodule. Ia
 
 ```text
 Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify
+```
+
+## v1.9 – verwaltetes Project Branding
+
+Azure-DevOps-Projekt-Avatare sind Bestandteil des Bootstrap-Sollzustands.
+
+Versionierte Assets:
+
+```text
+assets/
+└── project-icons/
+    ├── 00-platform.png
+    ├── 10-automation.png
+    ├── 20-iac.png
+    ├── 99-lab.png
+    └── cust-generic.png
+```
+
+Mapping:
+
+```text
+00-Platform   → assets/project-icons/00-platform.png
+10-Automation → assets/project-icons/10-automation.png
+20-IaC        → assets/project-icons/20-iac.png
+99-LAB        → assets/project-icons/99-lab.png
+CUST-*        → assets/project-icons/cust-generic.png
+```
+
+Zentrale Implementierung:
+
+```text
+bootstrap/BSSE.AzureDevOps.Branding.ps1
+```
+
+`New-BSSEAzureDevOpsCore.ps1` und `New-BSSECustomerProject.ps1` verwenden dieselbe Funktion `Ensure-BSSEProjectAvatar`. Dadurch werden bestehende und neu angelegte verwaltete Projekte mit derselben Logik behandelt.
+
+Für das Setzen des Avatars wird die offizielle Azure-DevOps-Core-API `Set Project Avatar` (`7.1-preview.1`) verwendet. Die API dokumentiert für Project Avatars keinen GET-Readback. Deshalb verwendet PlatformBootstrap zur idempotenten Zustandsverwaltung die Project Property:
+
+```text
+BSSE.PlatformBootstrap.ProjectAvatarSha256
+```
+
+Nur wenn dieser verwaltete SHA-256-Marker fehlt oder vom vorgesehenen Asset abweicht, plant/setzt der Bootstrap den Avatar erneut. Der Marker wird erst nach einem erfolgreichen Avatar-API-Aufruf geschrieben und anschließend wieder aus Azure DevOps gelesen und verifiziert.
+
+Bekannte Grenze: Eine ausschließlich manuelle Avatar-Änderung außerhalb des Bootstraps ist bei unverändertem Hash-Marker mit der dokumentierten Project-Avatar-Core-API nicht zuverlässig erkennbar. Details, Berechtigungen und Fail-Closed-Verhalten:
+
+```text
+docs/Project-Branding.md
 ```
 
 ## v1.8 – Self-Hosting First Run
@@ -225,16 +273,18 @@ Der Check verändert keine Plattform- oder Kundenobjekte und verwendet die Self-
 - Pipeline-Registrierung und gezielte Endpoint-Autorisierung,
 - Dry Run / Approval / Apply / Verify,
 - persistente `CustomerConfiguration`,
+- verwaltetes Project-Branding-Mapping und Avatar-Sollzustand,
 - harte Trennung zu AVD/Vaultwarden.
 
 ### Noch nicht runtime-verifiziert
 
-Bis zum ersten echten Plattform-First-Run sind insbesondere reale Entra-/Azure-DevOps-Objekterstellung, Endpoint-Type-Metadaten, WIF-Service-Connection, ACL-Zuweisung und der anschließende Pipeline-Lauf **nicht als tatsächlich verifiziert zu betrachten**.
+Bis zum ersten echten Plattform-/Branding-Lauf sind insbesondere reale Entra-/Azure-DevOps-Objekterstellung, Endpoint-Type-Metadaten, WIF-Service-Connection, ACL-Zuweisung, Project-Avatar-PUT, Project-Property-Marker und der anschließende Pipeline-Lauf **nicht als tatsächlich verifiziert zu betrachten**.
 
 Details:
 
 ```text
 docs/Customer-Onboarding-Setup.md
 docs/Techniker-Workflow.md
+docs/Project-Branding.md
 docs/Umsetzungsplan.md
 ```
