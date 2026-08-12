@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.2
+
+- Sollname des Azure-Collector-Repositories auf `10-Automation-AzureInfrastructureCollector` korrigiert
+- `10-Automation` verwendet für die beiden aktuell bestehenden Automations-Repositories nun konsistent die Projektnamenspräfixierung
+- Legacy-Name `AzureInfrastructureCollector` wird nicht mehr als Soll-Repository provisioniert
+- Fail-safe Legacy-Schutz verhindert bei `AzureInfrastructureCollector` die automatische Anlage eines Duplikats bzw. automatische Umbenennung
+- fachlicher Komponentenname `AzureInfrastructureCollector` bleibt unverändert und ist vom Repositorynamen getrennt
+- Source-of-Truth, README und Namenskonventionen auf v1.5.2 aktualisiert
+- keine globale Umbenennung von Repositories anderer Azure-DevOps-Projekte
+
 ## v1.5.1
 
 - Sollname des OPNsense-Dokumentationsrepositories auf `10-Automation-OPNsenseDocumentation` korrigiert
