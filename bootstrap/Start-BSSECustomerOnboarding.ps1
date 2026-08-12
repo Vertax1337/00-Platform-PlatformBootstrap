@@ -10,7 +10,7 @@ if (Test-BSSEPipelineContext) {
     throw @"
 Start-BSSECustomerOnboarding.ps1 ist das interaktive lokale Frontend.
 In Azure Pipelines wird stattdessen /pipelines/customer-onboarding.yml verwendet.
-Beide Wege rufen dasselbe Backend bootstrap/New-BSSECustomerProject.ps1 auf.
+Beide Wege rufen dieselben Backend-/Persistenzskripte auf.
 "@
 }
 
@@ -83,7 +83,7 @@ function Read-BSSEYesNo {
     }
 }
 
-function Invoke-BSSECustomerOnboardingBackend {
+function Get-BSSEOnboardingArguments {
     param(
         [Parameter(Mandatory)][hashtable]$Parameters,
         [switch]$Apply
@@ -115,12 +115,32 @@ function Invoke-BSSECustomerOnboardingBackend {
         $arguments += '-Apply'
     }
 
+    return @($arguments)
+}
+
+function Invoke-BSSECustomerOnboardingBackend {
+    param(
+        [Parameter(Mandatory)][hashtable]$Parameters,
+        [switch]$Apply
+    )
+
+    $arguments = Get-BSSEOnboardingArguments -Parameters $Parameters -Apply:$Apply
     return @(& "$PSScriptRoot\New-BSSECustomerProject.ps1" @arguments *>&1)
+}
+
+function Invoke-BSSECustomerConfigurationSync {
+    param(
+        [Parameter(Mandatory)][hashtable]$Parameters,
+        [switch]$Apply
+    )
+
+    $arguments = Get-BSSEOnboardingArguments -Parameters $Parameters -Apply:$Apply
+    return @(& "$PSScriptRoot\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1)
 }
 
 Write-Host ''
 Write-Host 'BSSE Customer Onboarding - Local Technician Frontend' -ForegroundColor Cyan
-Write-Host 'Dasselbe Backend wie die Azure-DevOps-Customer-Onboarding-Pipeline.' -ForegroundColor DarkGray
+Write-Host 'Dasselbe Backend und dieselbe CustomerConfiguration-Persistenz wie die Azure-DevOps-Pipeline.' -ForegroundColor DarkGray
 Write-Host ''
 
 $customerNumber = Read-BSSERequiredValue `
@@ -171,19 +191,25 @@ $parameters = @{
 
 Write-Host ''
 Write-Host 'Eingaben:' -ForegroundColor Cyan
-Write-Host "  CustomerNumber:       $customerNumber"
-Write-Host "  CustomerName:         $customerName"
-Write-Host "  CustomerSlug:         $(if ($customerSlug) { $customerSlug } else { '<auto>' })"
-Write-Host "  TenantId:             $(if ($tenantId) { $tenantId } else { '<not specified>' })"
-Write-Host "  AzureDocumentation:   $azureDocumentation"
-Write-Host "  OPNsenseDocumentation:$opnsenseDocumentation"
-Write-Host "  Firewalls:            $(if ($firewalls) { $firewalls } else { '<none>' })"
+Write-Host "  CustomerNumber:        $customerNumber"
+Write-Host "  CustomerName:          $customerName"
+Write-Host "  CustomerSlug:          $(if ($customerSlug) { $customerSlug } else { '<auto>' })"
+Write-Host "  TenantId:              $(if ($tenantId) { $tenantId } else { '<not specified>' })"
+Write-Host "  AzureDocumentation:    $azureDocumentation"
+Write-Host "  OPNsenseDocumentation: $opnsenseDocumentation"
+Write-Host "  Firewalls:             $(if ($firewalls) { $firewalls } else { '<none>' })"
 Write-Host ''
 
-Write-Host '=== DRY RUN ===' -ForegroundColor Cyan
+Write-Host '=== DRY RUN: CUSTOMER BOUNDARY ===' -ForegroundColor Cyan
 $dryRunOutput = Invoke-BSSECustomerOnboardingBackend -Parameters $parameters
 $dryRunOutput | ForEach-Object { Write-Host $_ }
-$dryRunText = ($dryRunOutput | Out-String)
+
+Write-Host ''
+Write-Host '=== DRY RUN: CUSTOMERCONFIGURATION ===' -ForegroundColor Cyan
+$configDryRunOutput = Invoke-BSSECustomerConfigurationSync -Parameters $parameters
+$configDryRunOutput | ForEach-Object { Write-Host $_ }
+
+$dryRunText = (($dryRunOutput + $configDryRunOutput) | Out-String)
 
 if ($dryRunText -match '\[BLOCKED\]') {
     Write-Host ''
@@ -193,30 +219,41 @@ if ($dryRunText -match '\[BLOCKED\]') {
 
 if ($dryRunText -notmatch '\[PLAN\]') {
     Write-Host ''
-    Write-Host '[OK] Der gewünschte Zustand ist bereits vorhanden. Kein Apply erforderlich.' -ForegroundColor Green
+    Write-Host '[OK] Der gewünschte Zustand einschließlich CustomerConfiguration ist bereits vorhanden. Kein Apply erforderlich.' -ForegroundColor Green
     exit 0
 }
 
 Write-Host ''
-if (-not (Read-BSSEYesNo -Prompt 'Dry Run geprüft. Genau diesen Plan jetzt anwenden?' -Default $false)) {
+if (-not (Read-BSSEYesNo -Prompt 'Dry Run vollständig geprüft. Genau diesen Plan jetzt anwenden?' -Default $false)) {
     Write-Host 'Abgebrochen. Es wurden keine Änderungen angewendet.' -ForegroundColor Cyan
     exit 0
 }
 
 Write-Host ''
-Write-Host '=== APPLY ===' -ForegroundColor Cyan
+Write-Host '=== APPLY: CUSTOMER BOUNDARY ===' -ForegroundColor Cyan
 $applyOutput = Invoke-BSSECustomerOnboardingBackend -Parameters $parameters -Apply
 $applyOutput | ForEach-Object { Write-Host $_ }
 
 Write-Host ''
-Write-Host '=== POST-APPLY VERIFY / DRY RUN ===' -ForegroundColor Cyan
+Write-Host '=== APPLY: CUSTOMERCONFIGURATION ===' -ForegroundColor Cyan
+$configApplyOutput = Invoke-BSSECustomerConfigurationSync -Parameters $parameters -Apply
+$configApplyOutput | ForEach-Object { Write-Host $_ }
+
+Write-Host ''
+Write-Host '=== POST-APPLY VERIFY: CUSTOMER BOUNDARY ===' -ForegroundColor Cyan
 $verifyOutput = Invoke-BSSECustomerOnboardingBackend -Parameters $parameters
 $verifyOutput | ForEach-Object { Write-Host $_ }
-$verifyText = ($verifyOutput | Out-String)
+
+Write-Host ''
+Write-Host '=== POST-APPLY VERIFY: CUSTOMERCONFIGURATION ===' -ForegroundColor Cyan
+$configVerifyOutput = Invoke-BSSECustomerConfigurationSync -Parameters $parameters
+$configVerifyOutput | ForEach-Object { Write-Host $_ }
+
+$verifyText = (($verifyOutput + $configVerifyOutput) | Out-String)
 
 if ($verifyText -match '\[(PLAN|CREATE|RENAME|BLOCKED)\]') {
     throw 'Post-Apply-Verifikation hat einen ausstehenden oder blockierten Zustand gefunden. Der Sollzustand ist nicht idempotent.'
 }
 
 Write-Host ''
-Write-Host '[OK] Customer-Onboarding abgeschlossen und Post-Apply-Idempotenz verifiziert.' -ForegroundColor Green
+Write-Host '[OK] Customer-Onboarding einschließlich persistenter CustomerConfiguration abgeschlossen und idempotent verifiziert.' -ForegroundColor Green
