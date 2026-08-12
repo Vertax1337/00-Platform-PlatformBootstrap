@@ -1,6 +1,9 @@
 trigger: none
 pr: none
 
+# Customer-Onboarding provisions the customer boundary and documentation capabilities only.
+# AVD and Vaultwarden are IaC products under 20-IaC and are deliberately not selectable here.
+
 parameters:
 - name: customerNumber
   displayName: Customer / Debitor number
@@ -29,16 +32,6 @@ parameters:
 
 - name: opnsenseDocumentation
   displayName: OPNsenseDocumentation
-  type: boolean
-  default: false
-
-- name: avd
-  displayName: AVD
-  type: boolean
-  default: false
-
-- name: vaultwarden
-  displayName: Vaultwarden
   type: boolean
   default: false
 
@@ -110,8 +103,6 @@ stages:
           $modules = @()
           if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
           if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
-          if ('${{ parameters.avd }}' -eq 'True') { $modules += 'AVD' }
-          if ('${{ parameters.vaultwarden }}' -eq 'True') { $modules += 'Vaultwarden' }
 
           $arguments = @(
             '-OrganizationUrl', '$(System.CollectionUri)',
@@ -153,7 +144,8 @@ stages:
         notifyUsers: ''
         instructions: |
           Review the complete Dry Run output.
-          Approve only if project, repositories, modules and firewall repositories match the intended customer onboarding and no unexpected CREATE/RENAME operation is shown.
+          Approve only if project, repositories, documentation capabilities and firewall repositories match the intended customer onboarding and no unexpected CREATE/RENAME operation is shown.
+          This pipeline does not deploy AVD or Vaultwarden; IaC products are handled separately under 20-IaC.
         onTimeout: reject
 
 - stage: Apply
@@ -180,8 +172,6 @@ stages:
           $modules = @()
           if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
           if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
-          if ('${{ parameters.avd }}' -eq 'True') { $modules += 'AVD' }
-          if ('${{ parameters.vaultwarden }}' -eq 'True') { $modules += 'Vaultwarden' }
 
           $arguments = @(
             '-OrganizationUrl', '$(System.CollectionUri)',
@@ -232,8 +222,6 @@ stages:
           $modules = @()
           if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
           if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
-          if ('${{ parameters.avd }}' -eq 'True') { $modules += 'AVD' }
-          if ('${{ parameters.vaultwarden }}' -eq 'True') { $modules += 'Vaultwarden' }
 
           $arguments = @(
             '-OrganizationUrl', '$(System.CollectionUri)',
