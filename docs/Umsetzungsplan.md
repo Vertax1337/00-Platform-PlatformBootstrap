@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.5.1
+**Version:** 1.5.2
 
 ## 1. Core
 
@@ -14,7 +14,7 @@
 └── SharedModules
 
 10-Automation
-├── AzureInfrastructureCollector
+├── 10-Automation-AzureInfrastructureCollector
 └── 10-Automation-OPNsenseDocumentation
 
 20-IaC
@@ -106,20 +106,20 @@ Es gibt bewusst kein zentrales Kundenbackup-Repo wie:
 10-Automation/OPNsenseBackup
 ```
 
-`10-Automation/10-Automation-OPNsenseDocumentation` enthält ausschließlich generischen Programmcode.
+Das Repository `10-Automation-OPNsenseDocumentation` enthält ausschließlich generischen Programmcode für Sanitization, Validierung und Normalisierung.
 
 ### Datenfluss
 
 ```text
 CUST-xxx/Firewall-*
     ↓ RAW
-10-Automation/10-Automation-OPNsenseDocumentation
+10-Automation / 10-Automation-OPNsenseDocumentation
     ↓ Sanitize
     ↓ Validate
     ↓ Normalize
-00-Platform/DocumentationEngine
+00-Platform / DocumentationEngine
     ↓
-CUST-xxx/Documentation
+CUST-xxx / Documentation
 ```
 
 ## 5. Mehrere Firewalls
@@ -166,28 +166,38 @@ Erneute Bootstrap-Läufe:
 - überschreiben keine bestehenden Repositories,
 - löschen keine bestehenden Repositories,
 - schreiben nichts in `Firewall-*`,
-- erstellen nur fehlende Soll-Repositories.
+- erstellen nur fehlende Soll-Repositories,
+- erzeugen bei bekannten Legacy-Namen keine Duplikate.
 
-## 9. Repositoryname OPNsenseDocumentation
+## 9. Repositorynamen im Projekt `10-Automation`
 
 ### Beschlossen
 
-Für das OPNsense-Dokumentationsrepository im Azure-DevOps-Projekt `10-Automation` gilt als Sollname:
+Für die beiden aktuell bestehenden Automations-Repositories gelten als Sollnamen:
 
 ```text
+10-Automation-AzureInfrastructureCollector
 10-Automation-OPNsenseDocumentation
 ```
 
 Hintergrund ist die eindeutige lokale Zuordnung zum Azure-DevOps-Projekt und eine saubere Clone-/Verzeichnisstruktur.
 
-### Keine globale Präfix-Konvention
+Die fachlichen Komponentenbezeichnungen bleiben:
 
-Aus dieser Einzelentscheidung wird **keine automatische globale Regel** für alle bestehenden Core-Repositories abgeleitet. Insbesondere werden `AzureInfrastructureCollector`, `PipelineTemplates`, `DocumentationEngine`, `SecurityValidation` usw. nicht durch diesen Change umbenannt.
+```text
+AzureInfrastructureCollector
+OPNsenseDocumentation
+```
+
+### Keine globale Präfix-Konvention für andere Projekte
+
+Die Präfixierung ist für die bestehenden Repositories unter `10-Automation` beschlossen. Daraus wird **keine automatische globale Umbenennung** der Repositories unter `00-Platform`, `20-IaC`, `99-LAB` oder den Kundenprojekten abgeleitet.
 
 ### Idempotenz / Legacy-Schutz
 
-- Der Sollzustand erkennt `10-Automation-OPNsenseDocumentation` exakt.
-- Ist das Soll-Repository vorhanden, erfolgt keine Änderung.
+- `10-Automation-AzureInfrastructureCollector` wird als Sollzustand exakt erkannt.
+- `10-Automation-OPNsenseDocumentation` wird als Sollzustand exakt erkannt.
+- Legacy-Name `AzureInfrastructureCollector` wird nicht mehr provisioniert.
 - Legacy-Namen `OPNsenseDocumentation` / `OpenSenseDocumentation` werden nicht mehr provisioniert.
 - Falls ausschließlich ein Legacy-Name vorhanden ist, erzeugt der Bootstrap kein Duplikat und führt keine automatische Umbenennung durch; der Lauf wird vor `-Apply` zur manuellen Prüfung blockiert.
 - Bestehende Git-Inhalte und Historie werden nicht verändert.
