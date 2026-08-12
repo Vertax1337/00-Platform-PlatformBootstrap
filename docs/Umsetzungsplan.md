@@ -1,10 +1,9 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
-**Status:** Working Branch / noch nicht Source-of-Truth  
-**Version:** 1.9 Candidate  
-**Branch:** `agent/project-branding`
+**Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
+**Version:** 1.9 Candidate
 
-> `main` bleibt Source-of-Truth v1.8, bis die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` versioniert, der Asset-Regressionstest ausgeführt und der Branding-Branch merge-fertig verifiziert wurde.
+> `main` ist der Arbeits- und Source-of-Truth-Branch. Der Project-Branding-Stand bleibt bis zur Versionierung und Verifikation der fünf freigegebenen Original-PNGs als v1.9 Candidate gekennzeichnet.
 
 ## 1. Core
 
@@ -94,6 +93,38 @@ Optional pro OPNsense:
 ```
 
 Jedes verwaltete `CUST-*`-Projekt soll automatisch das generische Customer-Project-Icon aus `assets/project-icons/cust-generic.png` erhalten.
+
+### 3.1 Verbindliche Abhängigkeit zu `00-Platform / DocumentationEngine`
+
+Der `PlatformBootstrap` provisioniert die für das `Customer-Onboarding` sowie für nachgelagerte Infrastruktur-Onboarding-Prozesse benötigte `CUST-*`-Grundstruktur und deren technische Voraussetzungen.
+
+Dazu gehören insbesondere die vom Bootstrap verwalteten Projekt-/Repository-Strukturen, Basis-Konfigurationen, Branding-, Berechtigungs- und Onboarding-Voraussetzungen.
+
+Die **finale Knowledge-Base-/Publishing-Architektur** ist dagegen ausdrücklich **keine Verantwortung des PlatformBootstrap**.
+
+Diese Architektur wird im Unterprojekt:
+
+```text
+00-Platform / DocumentationEngine
+```
+
+entschieden und umgesetzt.
+
+Damit gilt als feste Verantwortungsgrenze:
+
+```text
+PlatformBootstrap
+→ provisioniert CUST-* Boundary und Onboarding-Voraussetzungen
+→ schafft die technische Zielstruktur für nachgelagerte Prozesse
+→ entscheidet NICHT über die finale Knowledge-Base-/Publishing-Architektur
+
+DocumentationEngine
+→ definiert die finale Knowledge-Base-/Publishing-Architektur
+→ verarbeitet die dafür vorgesehenen normalisierten Daten
+→ verantwortet die Dokumentgenerierung und spätere Publishing-Zielarchitektur
+```
+
+Änderungen an der finalen Ablage-, Knowledge-Base- oder Publishing-Struktur dürfen daher nicht isoliert im Bootstrap neu entworfen werden. Sie sind als Abhängigkeit aus dem Unterprojekt `00-Platform / DocumentationEngine` zu übernehmen.
 
 ## 4. OPNsense RAW Backup
 
@@ -575,8 +606,9 @@ docs/Project-Branding.md
 - Pipeline darf sich nicht selbst privilegieren.
 - Project Branding ist Teil des verwalteten Azure-DevOps-Projekt-Sollzustands.
 - Alle `CUST-*` verwenden zunächst dasselbe generische Customer-Icon.
+- PlatformBootstrap provisioniert die `CUST-*`-Grundstruktur und Onboarding-Voraussetzungen; die finale Knowledge-Base-/Publishing-Architektur wird ausschließlich im Unterprojekt `00-Platform / DocumentationEngine` festgelegt.
 
-### Code-seitig im Branding-Branch implementiert
+### Code-seitig in `main` implementiert
 
 - zentrale Branding-Funktion und Projekt-Mapping,
 - Asset-/PNG-/SHA-256-Validierung,
@@ -586,11 +618,11 @@ docs/Project-Branding.md
 - Branding-Asset-/Mapping-Regressionstest,
 - README-/Techniker-/Branding-Dokumentation.
 
-### Vor Merge noch offen
+### Für v1.9 noch offen
 
-- die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` im Git-Tree des Branding-Branches versionieren,
+- die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` im Git-Tree von `main` versionieren,
 - `tests/Test-BSSEProjectBranding.ps1` gegen genau diese Git-Dateien ausführen,
-- erst danach v1.9 in `main` als Source-of-Truth markieren.
+- anschließend den Branding-Stand als v1.9 verifizieren.
 
 ### Noch nicht runtime-verifiziert
 
