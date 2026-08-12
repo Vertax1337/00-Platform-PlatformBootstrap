@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.8
+
+- neue Self-Hosting-/Dependency-Initialisierung `bootstrap/Initialize-BSSEPlatformDependencies.ps1`
+- lokales `Start-BSSECustomerOnboarding.ps1` prüft vor dem Kunden-Onboarding automatisch die Plattform-Dependencies
+- bei einer unvollständigen Erstinstallation wird zunächst ein vollständiger Dependency-Dry-Run angezeigt und eine separate lokale Freigabe verlangt
+- mutierende Dependency-Initialisierung ist aus Azure Pipelines explizit gesperrt; die Pipeline darf sich keine eigene Identität oder organisationsweiten Rechte geben
+- Core-Projekte/-Repositories werden bei Erstinstallation über den bestehenden idempotenten Core-Bootstrap provisioniert
+- ein leeres `00-Platform/PlatformBootstrap` kann ausschließlich aus einem sauberen, committed lokalen Source-of-Truth nach `main` initialisiert werden
+- uncommitted lokaler Stand, nicht-leeres abweichendes Azure-Repo oder Branch-Divergenz führen zu `BLOCKED`; kein Force-Push
+- dedizierte secretless Entra-App/Service-Principal `sp-bsse-platform-bootstrap-azdo` wird bei Bedarf ohne Passwort und ohne Azure-RBAC-Rollenzuweisung erstellt
+- Service Principal wird programmatisch mit `Basic` + `00-Platform/Readers` in Azure DevOps aufgenommen
+- Collection-Berechtigung `Create new projects` wird dynamisch über Security Namespace/Permission Bit ermittelt und gezielt vergeben; keine Project-Collection-Administrator-Mitgliedschaft
+- Azure-DevOps-WIF-Service-Connection `sc-platform-bootstrap-azdo` wird anhand der zur Laufzeit gelieferten Service-Endpoint-Type-Metadaten geplant/erstellt; unbekannte erforderliche Inputs führen zu Fail Closed
+- federated credential `fic-sc-platform-bootstrap-azdo` wird nach Ermittlung von WIF issuer/subject angelegt und bei Wiederholung auf Drift geprüft
+- `Customer-Onboarding` wird anschließend idempotent registriert und ausschließlich für diese Service Connection autorisiert
+- `Test-BSSECustomerOnboardingReadiness.ps1` verwendet den nicht-mutierenden Dependency-Dry-Run als zentralen Readiness-Nachweis
+- Azure-DevOps-Organisation selbst wird bewusst nicht erzeugt; sie muss bereits existieren und der lokale Erstinstallations-Administrator muss die erforderlichen Entra-/Azure-DevOps-Administrationsrechte besitzen
+- Runtime-Verifikation der realen Endpoint-Type-Metadaten, WIF-Erstellung und Berechtigungszuweisung bleibt bis zum ersten echten Erstinstallationslauf ausdrücklich offen
+
 ## v1.7
 
 - lokaler und zentraler Customer-Onboarding-Weg auf denselben vollständigen Zielablauf vereinheitlicht
