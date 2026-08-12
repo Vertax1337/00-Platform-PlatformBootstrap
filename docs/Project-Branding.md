@@ -1,10 +1,12 @@
 # Project Branding – Azure DevOps Project Avatars
 
+> **Status:** v1.9 Candidate auf `agent/project-branding`. Code, Mapping und Dokumentation sind vorbereitet; die fünf freigegebenen Original-PNGs müssen vor dem Merge noch tatsächlich unter `assets/project-icons/` in Git versioniert werden. `main` bleibt bis dahin v1.8 Source-of-Truth.
+
 ## Zweck
 
 `PlatformBootstrap` verwaltet die Azure-DevOps-Projekt-Avatare als Teil des gewünschten Plattformzustands.
 
-Die Branding-Assets liegen versioniert im Repository unter:
+Vorgesehene versionierte Branding-Assets:
 
 ```text
 assets/
@@ -66,7 +68,7 @@ Für das Setzen des Projekt-Avatars wird die aktuell dokumentierte Azure-DevOps-
 PUT https://dev.azure.com/{organization}/_apis/projects/{projectId}/avatar?api-version=7.1-preview.1
 ```
 
-Der Request Body enthält `ProjectAvatar.image` als Bytearray.
+Der Request Body enthält `ProjectAvatar.image` als Bytearray (`number[]`).
 
 Microsoft dokumentiert für diesen Endpoint den OAuth-Scope:
 
@@ -219,11 +221,18 @@ Für neu durch PlatformBootstrap erzeugte `CUST-*`-Projekte wird die bereits bes
 
 ## Asset-Integrität
 
-Die vorgesehenen Source Assets aus dem Branding-Paket werden unverändert unter `assets/project-icons/` versioniert.
+Die angehängte ZIP wurde vor der Implementierung geprüft. Sie enthält exakt fünf PNGs unter `assets/project-icons/`; alle fünf sind valide PNGs mit 1254×1254 Pixeln im RGB-Modus.
 
-Für Regressionstests werden die erwarteten SHA-256-Werte festgehalten. Damit kann erkannt werden, wenn ein Asset versehentlich ersetzt oder verändert wurde.
+Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften Originalgrößen und SHA-256-Werte. Dadurch wird die Candidate-Implementierung erst merge-fertig, wenn genau diese freigegebenen Source Assets im Git-Tree vorhanden sind.
 
 ## Verifikationsstatus
+
+### Verifiziert
+
+- ZIP-Inhalt und Pfade,
+- PNG-Gültigkeit, Dimension und Farbmodus der fünf hochgeladenen Source Assets,
+- Bytegrößen und SHA-256 der fünf Source Assets,
+- Code-Diff der Core-/Customer-Provisionierungsintegration auf dem Branding-Branch.
 
 ### Code-seitig implementiert
 
@@ -232,7 +241,13 @@ Für Regressionstests werden die erwarteten SHA-256-Werte festgehalten. Damit ka
 - SHA-256-Markerstrategie,
 - Core-Projektintegration,
 - Customer-Projektintegration,
-- Dry-Run-/Apply-/Fail-Closed-Verhalten.
+- Dry-Run-/Apply-/Fail-Closed-Verhalten,
+- Regressionstest mit den freigegebenen Asset-Hashes.
+
+### Vor Merge noch offen
+
+- die fünf Original-PNGs im Git-Tree des Branding-Branches versionieren,
+- den PowerShell-Regressionstest gegen diese Git-Dateien ausführen.
 
 ### Noch nicht runtime-verifiziert
 
