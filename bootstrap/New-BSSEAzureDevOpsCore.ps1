@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\BSSE.AzureDevOps.Common.ps1"
+. "$PSScriptRoot\BSSE.AzureDevOps.Branding.ps1"
 
 $session = Initialize-BSSEAzureDevOpsSession -OrganizationUrl $OrganizationUrl
 $OrganizationUrl = $session.OrganizationUrl
@@ -221,6 +222,12 @@ foreach ($project in $core) {
             -DesiredRepositories $project.Repositories `
             -LegacyRepositoryAliases $legacyAliases
     }
+
+    Write-Host "  Project branding:" -ForegroundColor Cyan
+    Ensure-BSSEProjectAvatar `
+        -OrganizationUrl $OrganizationUrl `
+        -ProjectName $project.Name `
+        -Apply:$Apply | Out-Null
 }
 
 Write-Host ""
@@ -228,5 +235,5 @@ if (-not $Apply) {
     Write-Host "Dry Run abgeschlossen. Es wurden keine Azure-DevOps-Objekte verändert." -ForegroundColor Cyan
 }
 else {
-    Write-Host "Core-Projekte und Repositories wurden idempotent angelegt bzw. waren bereits vorhanden." -ForegroundColor Cyan
+    Write-Host "Core-Projekte, Repositories und verwaltetes Project Branding wurden idempotent angelegt bzw. verifiziert." -ForegroundColor Cyan
 }
