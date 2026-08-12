@@ -36,6 +36,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\BSSE.AzureDevOps.Common.ps1"
+. "$PSScriptRoot\BSSE.AzureDevOps.Branding.ps1"
 
 function Get-FirewallDefinitions {
     param(
@@ -441,6 +442,13 @@ else {
 }
 
 Write-Host ""
+Write-Host "Project branding:" -ForegroundColor Cyan
+Ensure-BSSEProjectAvatar `
+    -OrganizationUrl $OrganizationUrl `
+    -ProjectName $projectName `
+    -Apply:$Apply | Out-Null
+
+Write-Host ""
 Write-Host "Documentation plan:" -ForegroundColor Cyan
 
 if ($Modules -contains 'AzureDocumentation') {
@@ -488,7 +496,7 @@ if (-not $Apply) {
     Write-Host "Dry Run abgeschlossen. Es wurden keine Azure-DevOps-Objekte verändert." -ForegroundColor Cyan
 }
 else {
-    Write-Host "Customer project/documentation base successfully created/verified." -ForegroundColor Cyan
+    Write-Host "Customer project/documentation base and managed project branding successfully created/verified." -ForegroundColor Cyan
 }
 
 Write-Host ""
