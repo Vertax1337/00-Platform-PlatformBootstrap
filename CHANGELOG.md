@@ -1,10 +1,10 @@
 # Changelog
 
-## v1.9
+## v1.9 Candidate (`agent/project-branding`)
 
-- zentrale Project-Branding-Komponente `bootstrap/BSSE.AzureDevOps.Branding.ps1`
+- zentrale Project-Branding-Komponente `bootstrap/BSSE.AzureDevOps.Branding.ps1` code-seitig implementiert
 - verbindliches Avatar-Mapping für `00-Platform`, `10-Automation`, `20-IaC`, `99-LAB` und alle `CUST-*`
-- versionierte Branding-Assets unter `assets/project-icons/`
+- Zielstruktur für die fünf freigegebenen Original-Branding-Assets unter `assets/project-icons/`; die Binärdateien sind auf diesem Branch noch nicht im Git-Tree und müssen vor dem Merge bytegenau versioniert werden
 - Core-Bootstrap bindet Project Branding für bestehende und neu erstellte Core-Projekte ein
 - Customer-Provisionierung bindet `cust-generic.png` automatisch für bestehende und neu erstellte `CUST-*`-Projekte ein
 - Avatar-Write über die offiziell dokumentierte Azure-DevOps-Core-API `Set Project Avatar` (`7.1-preview.1`)
@@ -17,7 +17,7 @@
 - bekannte API-Grenze dokumentiert: manuelle Avatar-Drift außerhalb des Bootstraps ist bei unverändertem Marker mit der dokumentierten Core-API nicht zuverlässig lesbar
 - neuer Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert Mapping, Original-Dateigrößen und SHA-256 der fünf freigegebenen ZIP-Assets
 - neue Dokumentation `docs/Project-Branding.md`
-- README und Umsetzungsplan auf v1.9 fortgeschrieben
+- README, Techniker-Workflow und Umsetzungsplan als v1.9-Candidate fortgeschrieben; `main` bleibt bis Asset-Integration und Test Source-of-Truth v1.8
 - reale Azure-DevOps-Avatar-/Property-Runtime-Verifikation bleibt bis zum ersten echten Lauf ausdrücklich offen
 
 ## v1.8
@@ -116,7 +116,7 @@
 
 - neues Repository `00-Platform/PlatformBootstrap`
 - `PlatformBootstrap` ist künftig das erste Soll-Repository eines neu angelegten `00-Platform` Projekts
-- bestehende `PipelineTemplates` Repositories werden bei Upgrades nicht umbenannt oder verändert
+- bestehende `PipelineTemplates` Repositories werden bei Upgrades nicht umbenannt und vorhandener Repository-Inhalt bleibt unverändert
 - erneuter Bootstrap-Lauf ergänzt bei bestehenden Installationen nur das fehlende `PlatformBootstrap`
 - Plattformdokumentation und Namenskonventionen entsprechend aktualisiert
 
