@@ -2,7 +2,7 @@
 
 ## Read-only Documentation
 
-- AzureInfrastructureCollector: Read-only
+- AzureInfrastructureCollector (Komponente; Repo `10-Automation-AzureInfrastructureCollector`): Read-only
 - OPNsenseDocumentation (Modul; Repo `10-Automation-OPNsenseDocumentation`): Verarbeitung verändert die Quell-Firewall nicht
 - Fail Closed
 
