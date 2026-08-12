@@ -54,3 +54,17 @@ Daraus entstehen automatisch Slugs.
 ## OPNsense-Anbindung
 
 Das erzeugte `Firewall-*` Repo bleibt vollständig leer, bis die OPNsense selbst über `os-git-backup` den ersten Push durchführt.
+
+## Hinweis Modulname vs. Repositoryname
+
+Der Bootstrap-Parameter:
+
+```powershell
+-Modules OPNsenseDocumentation
+```
+
+bleibt unverändert. `OPNsenseDocumentation` ist der fachliche Modulbezeichner. Das zentrale Implementierungsrepository im Projekt `10-Automation` heißt dagegen:
+
+```text
+10-Automation-OPNsenseDocumentation
+```
