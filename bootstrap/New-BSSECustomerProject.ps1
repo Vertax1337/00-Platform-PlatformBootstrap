@@ -101,6 +101,8 @@ function New-CustomerScaffold {
 
     $tenantValue = if ([string]::IsNullOrWhiteSpace($AzureTenantId)) { 'null' } else { $AzureTenantId }
 
+    # Keep the established customer.yml key 'modules:' for compatibility.
+    # Its values now represent documentation modules only.
     $lines = @(
         'customer:',
         "  number: `"$Number`"",
@@ -109,7 +111,7 @@ function New-CustomerScaffold {
         "  project: `"$ProjectName`"",
         "  tenantId: $tenantValue",
         '',
-        'documentationModules:',
+        'modules:',
         "  azureDocumentation: $($moduleMap.AzureDocumentation.ToString().ToLowerInvariant())",
         "  opnsenseDocumentation: $($moduleMap.OPNsenseDocumentation.ToString().ToLowerInvariant())",
         '',
