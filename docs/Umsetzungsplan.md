@@ -1,7 +1,10 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
-**Status:** Source-of-Truth  
-**Version:** 1.9
+**Status:** Working Branch / noch nicht Source-of-Truth  
+**Version:** 1.9 Candidate  
+**Branch:** `agent/project-branding`
+
+> `main` bleibt Source-of-Truth v1.8, bis die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` versioniert, der Asset-Regressionstest ausgeführt und der Branding-Branch merge-fertig verifiziert wurde.
 
 ## 1. Core
 
@@ -90,7 +93,7 @@ Optional pro OPNsense:
 └── ...
 ```
 
-Jedes verwaltete `CUST-*`-Projekt erhält automatisch das generische Customer-Project-Icon aus `assets/project-icons/cust-generic.png`.
+Jedes verwaltete `CUST-*`-Projekt soll automatisch das generische Customer-Project-Icon aus `assets/project-icons/cust-generic.png` erhalten.
 
 ## 4. OPNsense RAW Backup
 
@@ -445,7 +448,7 @@ OPNsenseDocumentation
 Firewalls
 ```
 
-AVD und Vaultwarden sind bewusst ausgeschlossen.
+AVD und Vaultwarden sind bewusst ausgeschlossen. Ein Project-Icon-Parameter existiert bewusst nicht.
 
 ### Pipeline-Stages
 
@@ -503,7 +506,9 @@ BLOCKED / Fehler         → NOT READY
 
 ## 14. Project Branding
 
-### Assets
+### Freigegebene Source Assets
+
+Die angehängte Branding-ZIP wurde geprüft. Sie enthält exakt:
 
 ```text
 assets/project-icons/00-platform.png
@@ -513,7 +518,9 @@ assets/project-icons/99-lab.png
 assets/project-icons/cust-generic.png
 ```
 
-Verbindliches Mapping:
+Alle fünf Dateien sind valide PNGs (1254×1254, RGB). Die Originalgrößen und SHA-256-Werte sind im Regressionstest fixiert.
+
+### Verbindliches Mapping
 
 ```text
 00-Platform   → 00-platform.png
@@ -550,8 +557,6 @@ Regressionstest:
 tests/Test-BSSEProjectBranding.ps1
 ```
 
-Der Test fixiert Mapping, Dateigrößen und SHA-256 der fünf freigegebenen Branding-Assets.
-
 Details und API-/Idempotenzgrenzen:
 
 ```text
@@ -571,24 +576,21 @@ docs/Project-Branding.md
 - Project Branding ist Teil des verwalteten Azure-DevOps-Projekt-Sollzustands.
 - Alle `CUST-*` verwenden zunächst dasselbe generische Customer-Icon.
 
-### Bereits im Repository implementiert
+### Code-seitig im Branding-Branch implementiert
 
-- Core-Bootstrap,
-- Dual-Runtime-Erkennung,
-- `Initialize-BSSEPlatformDependencies.ps1`,
-- automatischer Dependency-Preflight im lokalen Frontend,
-- secretless Entra-Identitätsplanung/-erstellung,
-- Azure-DevOps-Entitlement Basic + Readers,
-- gezielte `Create new projects`-ACL,
-- dynamische WIF-Service-Endpoint-Type-Erkennung,
-- federated-credential-Management,
-- Pipeline-Registrierung und pipeline-spezifische Endpoint-Autorisierung,
-- lokaler und zentraler Customer-Onboarding-Workflow,
-- persistente `CustomerConfiguration`,
 - zentrale Branding-Funktion und Projekt-Mapping,
+- Asset-/PNG-/SHA-256-Validierung,
+- offizielle Project-Avatar-REST-Integration,
+- idempotente Project-Property-Markerstrategie,
 - Core-/Customer-Provisionierungsintegration des Brandings,
 - Branding-Asset-/Mapping-Regressionstest,
-- Readiness-Check.
+- README-/Techniker-/Branding-Dokumentation.
+
+### Vor Merge noch offen
+
+- die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` im Git-Tree des Branding-Branches versionieren,
+- `tests/Test-BSSEProjectBranding.ps1` gegen genau diese Git-Dateien ausführen,
+- erst danach v1.9 in `main` als Source-of-Truth markieren.
 
 ### Noch nicht runtime-verifiziert
 
