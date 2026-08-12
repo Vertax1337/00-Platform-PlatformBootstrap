@@ -90,3 +90,31 @@ sc-platform-bootstrap-azdo
 ```
 
 Diese Verbindung dient ausschließlich der Azure-DevOps-Provisionierung durch den zentralen Customer-Onboarding-Workflow und ist von Dokumentations-Reader- und IaC-Deployment-Identitäten getrennt.
+
+## PlatformBootstrap-Dienstidentität
+
+Microsoft-Entra-App/Service-Principal:
+
+```text
+sp-bsse-platform-bootstrap-azdo
+```
+
+Federated Credential für die zentrale Service Connection:
+
+```text
+fic-sc-platform-bootstrap-azdo
+```
+
+Zuordnung:
+
+```text
+sp-bsse-platform-bootstrap-azdo
+        ↓ Workload Identity Federation
+fic-sc-platform-bootstrap-azdo
+        ↓
+sc-platform-bootstrap-azdo
+        ↓ ausschließlich autorisiert für
+Customer-Onboarding
+```
+
+Die PlatformBootstrap-Identität ist weder Dokumentations-Reader noch IaC-Deployment-Identität.
