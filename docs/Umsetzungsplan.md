@@ -507,7 +507,7 @@ BLOCKED / Fehler         → NOT READY
 
 ```text
 assets/project-icons/00-platform.png
-aassets/project-icons/10-automation.png
+assets/project-icons/10-automation.png
 assets/project-icons/20-iac.png
 assets/project-icons/99-lab.png
 assets/project-icons/cust-generic.png
