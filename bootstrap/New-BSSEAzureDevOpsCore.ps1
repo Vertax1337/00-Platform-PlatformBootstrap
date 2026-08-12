@@ -21,8 +21,9 @@ $core = @(
     @{
         Name = '10-Automation'
         Description = 'BSSE read-only collectors, sanitizers and documentation automation.'
-        Repositories = @('AzureInfrastructureCollector', '10-Automation-OPNsenseDocumentation')
+        Repositories = @('10-Automation-AzureInfrastructureCollector', '10-Automation-OPNsenseDocumentation')
         LegacyRepositoryAliases = @{
+            '10-Automation-AzureInfrastructureCollector' = @('AzureInfrastructureCollector')
             '10-Automation-OPNsenseDocumentation' = @('OPNsenseDocumentation', 'OpenSenseDocumentation')
         }
     },
