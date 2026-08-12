@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.8
+**Version:** 1.9
 
 ## 1. Core
 
@@ -38,6 +38,8 @@ Enthält:
 - Kunden-Onboarding,
 - Firewall-Repo-Onboarding,
 - gemeinsame Azure-DevOps-CLI-Authentifizierungslogik,
+- verwaltetes Azure-DevOps-Project-Branding,
+- versionierte Branding-Assets,
 - Organisationsprofile,
 - Namenskonventionen,
 - Plattform-/Security-Dokumentation,
@@ -87,6 +89,8 @@ Optional pro OPNsense:
 ├── Firewall-<Name>-Branch01
 └── ...
 ```
+
+Jedes verwaltete `CUST-*`-Projekt erhält automatisch das generische Customer-Project-Icon aus `assets/project-icons/cust-generic.png`.
 
 ## 4. OPNsense RAW Backup
 
@@ -194,6 +198,14 @@ Least-Privilege-Zustand:
 
 Ein vorhandenes Deny oder widersprüchliche bestehende Identitäts-/Endpointkonfiguration wird nicht automatisch überschrieben.
 
+### Project Branding
+
+Für Project Branding wird kein separates Credential eingeführt. Die bestehende lokale bzw. Pipeline-Authentifizierung wird wiederverwendet.
+
+Die offizielle `Set Project Avatar`-API dokumentiert den OAuth-Scope `vso.project_manage`. Für den idempotenten SHA-256-Marker werden zusätzlich Project Properties gelesen und geschrieben; die ausführende Identität benötigt dafür die entsprechende Projektberechtigung (`Manage project properties`).
+
+Branding-Fehler werden nicht zu einer reinen Warning degradiert. Asset-, Project-ID-, Berechtigungs-, Avatar-API- oder Marker-Validierungsfehler blockieren den betroffenen Bootstrap-Lauf. Bereits zuvor erfolgreich erzeugte Azure-DevOps-Objekte werden nicht gelöscht oder zurückgerollt.
+
 ## 8. Idempotenz / Bestandsschutz
 
 Erneute Bootstrap-Läufe:
@@ -203,7 +215,8 @@ Erneute Bootstrap-Läufe:
 - schreiben nichts in `Firewall-*`,
 - erstellen nur fehlende Soll-Repositories,
 - erzeugen bei bekannten Legacy-Namen keine Duplikate,
-- überschreiben keine abweichenden vorhandenen `CustomerConfiguration`-Bootstrapdateien.
+- überschreiben keine abweichenden vorhandenen `CustomerConfiguration`-Bootstrapdateien,
+- schreiben Project Avatars nicht erneut, wenn der verwaltete Asset-Hash-Marker bereits dem Sollzustand entspricht.
 
 Für `CustomerConfiguration` gilt:
 
@@ -212,6 +225,33 @@ fehlend    → PLAN / ADD
 identisch  → EXISTS
 abweichend → BLOCKED
 ```
+
+Für Project Branding gilt:
+
+```text
+Asset fehlt/ungültig
+→ BLOCKED
+
+Projekt noch nicht vorhanden (Dry Run)
+→ PLAN Avatar nach Projekterstellung
+
+Project-Avatar-SHA-Marker fehlt/abweichend
+→ PLAN / bei Apply SET + Marker-Verify
+
+Project-Avatar-SHA-Marker identisch
+→ EXISTS / kein Avatar-Write
+
+Avatar-API / Marker-Write / Marker-Readback fehlerhaft
+→ BLOCKED
+```
+
+Die aktuell dokumentierte Azure-DevOps-Core-API bietet keinen Project-Avatar-GET-Readback. Deshalb wird als verwalteter Marker folgende Project Property verwendet:
+
+```text
+BSSE.PlatformBootstrap.ProjectAvatarSha256
+```
+
+Bekannte Grenze: Eine manuelle Avatar-Änderung außerhalb von PlatformBootstrap kann bei unverändertem Marker nicht zuverlässig erkannt werden. Es wird bewusst kein undokumentierter Readback-Endpoint verwendet.
 
 Für die Self-Hosting-Ausführungsquelle gilt:
 
@@ -289,7 +329,7 @@ Customer-Onboarding
 ### Was automatisch als Dependency behandelt wird
 
 ```text
-Core-Projekte/-Repositories
+Core-Projekte/-Repositories inkl. Project Branding
 00-Platform/PlatformBootstrap Seed
 sp-bsse-platform-bootstrap-azdo
 Azure-DevOps-Service-Principal-Entitlement
@@ -343,7 +383,7 @@ Customer-Onboarding
     ↓
 Validate
     ↓
-Dry Run Customer Boundary
+Dry Run Customer Boundary + Project Branding
     ↓
 Dry Run CustomerConfiguration
     ↓
@@ -368,6 +408,8 @@ Beide Wege verwenden:
 bootstrap/New-BSSECustomerProject.ps1
 bootstrap/Sync-BSSECustomerConfiguration.ps1
 ```
+
+Project Branding ist Bestandteil von `New-BSSECustomerProject.ps1` und benötigt keinen separaten Techniker-Schritt.
 
 ### Authentifizierung
 
@@ -415,9 +457,9 @@ Apply
 Verify
 ```
 
-`DryRun` prüft Kundenboundary und `CustomerConfiguration` und setzt `hasChanges`. Ohne `[PLAN]` werden Approval und Apply übersprungen.
+`DryRun` prüft Kundenboundary einschließlich Project Branding sowie `CustomerConfiguration` und setzt `hasChanges`. Ohne `[PLAN]` werden Approval und Apply übersprungen.
 
-`Verify` bricht bei verbleibendem `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` ab.
+`Verify` bricht bei verbleibendem `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` ab. Ein korrekt gesetzter Branding-Marker muss deshalb im Verify als `EXISTS` erscheinen.
 
 ## 12. Persistente CustomerConfiguration
 
@@ -459,7 +501,64 @@ PLAN                    → Dependency fehlt
 BLOCKED / Fehler         → NOT READY
 ```
 
-## 14. Implementierungsstatus
+## 14. Project Branding
+
+### Assets
+
+```text
+assets/project-icons/00-platform.png
+aassets/project-icons/10-automation.png
+assets/project-icons/20-iac.png
+assets/project-icons/99-lab.png
+assets/project-icons/cust-generic.png
+```
+
+Verbindliches Mapping:
+
+```text
+00-Platform   → 00-platform.png
+10-Automation → 10-automation.png
+20-IaC        → 20-iac.png
+99-LAB        → 99-lab.png
+CUST-*        → cust-generic.png
+```
+
+Zentrale wiederverwendbare Komponente:
+
+```text
+bootstrap/BSSE.AzureDevOps.Branding.ps1
+```
+
+Validierung:
+
+```text
+Asset-Mapping
+→ Asset vorhanden
+→ PNG-Signatur
+→ SHA-256
+→ Projekt / Project-ID
+→ bestehender Hash-Marker
+→ bei Bedarf Avatar PUT
+→ HTTP 200
+→ Hash-Marker PATCH
+→ Hash-Marker GET / exakte Verifikation
+```
+
+Regressionstest:
+
+```text
+tests/Test-BSSEProjectBranding.ps1
+```
+
+Der Test fixiert Mapping, Dateigrößen und SHA-256 der fünf freigegebenen Branding-Assets.
+
+Details und API-/Idempotenzgrenzen:
+
+```text
+docs/Project-Branding.md
+```
+
+## 15. Implementierungsstatus
 
 ### Bereits beschlossen
 
@@ -469,6 +568,8 @@ BLOCKED / Fehler         → NOT READY
 - Plattform-Dependencies werden als idempotenter Sollzustand behandelt.
 - privilegierte Dependency-Änderungen benötigen separaten lokalen Dry Run + Freigabe.
 - Pipeline darf sich nicht selbst privilegieren.
+- Project Branding ist Teil des verwalteten Azure-DevOps-Projekt-Sollzustands.
+- Alle `CUST-*` verwenden zunächst dasselbe generische Customer-Icon.
 
 ### Bereits im Repository implementiert
 
@@ -484,6 +585,9 @@ BLOCKED / Fehler         → NOT READY
 - Pipeline-Registrierung und pipeline-spezifische Endpoint-Autorisierung,
 - lokaler und zentraler Customer-Onboarding-Workflow,
 - persistente `CustomerConfiguration`,
+- zentrale Branding-Funktion und Projekt-Mapping,
+- Core-/Customer-Provisionierungsintegration des Brandings,
+- Branding-Asset-/Mapping-Regressionstest,
 - Readiness-Check.
 
 ### Noch nicht runtime-verifiziert
@@ -499,9 +603,12 @@ Bis zum echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut b
 - pipeline-spezifische Service-Connection-Autorisierung,
 - WIF-Pipeline-Authentifizierung,
 - Git-Push nach `CustomerConfiguration`,
+- realer Project-Avatar-PUT für Core-/Customer-Projekte,
+- reale Project-Property-Marker-Schreib-/Leseverifikation,
+- tatsächliche Anzeige der Icons in der Azure-DevOps-UI,
 - realer Apply-/Post-Apply-Idempotenzlauf.
 
-## 15. Separater IaC-Techniker-/Deployment-Weg
+## 16. Separater IaC-Techniker-/Deployment-Weg
 
 ### Bereits beschlossen
 
