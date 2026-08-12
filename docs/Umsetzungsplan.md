@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.6
+**Version:** 1.6.1
 
 ## 1. Core
 
@@ -18,6 +18,10 @@
 └── 10-Automation-OPNsenseDocumentation
 
 20-IaC
+├── Vaultwarden
+├── AVD-Accelerator
+└── Shared-IaC-Modules
+
 99-LAB
 ```
 
@@ -134,12 +138,36 @@ CUST-4711-Cannon-Deutschland-GmbH
 └── Firewall-Cannon-Deutschland-GmbH-Branch02
 ```
 
-## 6. Modulmodell
+## 6. Verbindliche Trennung: Dokumentationsplattform vs. IaC-Produkte
 
-- AzureDocumentation
-- OPNsenseDocumentation
-- AVD
-- Vaultwarden
+### Dokumentationsplattform
+
+Folgende Fähigkeiten gehören zum Customer-/Dokumentations-Onboarding:
+
+```text
+AzureDocumentation
+OPNsenseDocumentation
+```
+
+Sie verwenden die Read-only-/Sanitization-Kette der Dokumentationsplattform.
+
+### IaC-Produkte
+
+Folgende Komponenten sind **keine Dokumentationsmodule**:
+
+```text
+AVD-Accelerator
+Vaultwarden
+```
+
+Sie sind IaC-Produkte unter `20-IaC` und werden über separate Deployment-Workflows behandelt.
+
+Damit gilt ausdrücklich:
+
+- `New-BSSECustomerProject.ps1` provisioniert keine AVD- oder Vaultwarden-Deployments.
+- `pipelines/customer-onboarding.yml` bietet keine AVD-/Vaultwarden-Auswahl an.
+- Customer-Onboarding und IaC-Deployment verwenden getrennte Service Connections und getrennte Sicherheitsmodelle.
+- IaC folgt weiterhin `Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify`.
 
 Firewall-Backup-Repositories sind bewusst vom OPNsenseDocumentation-Modul entkoppelt.
 
@@ -159,6 +187,8 @@ Ziel für den nächsten Security-Schritt:
 - keine unkontrollierten lokalen Klone
 - kein Raw-Config-Publishing
 - Pipeline muss vor KI/Dokumentation sanitizen und validieren
+
+IaC verwendet getrennte Deployment-Identitäten und darf nicht über die Dokumentations-/Customer-Onboarding-Identität deployen.
 
 ## 8. Idempotenz
 
@@ -257,13 +287,27 @@ Pipeline:
 - optional `SYSTEM_ACCESSTOKEN` als nicht-interaktiven Kompatibilitätsfallback automatisch an die Azure-DevOps-CLI binden,
 - andernfalls Fail Closed.
 
-### Pipeline
+### Customer-Onboarding-Pipeline
 
 Repository-Datei:
 
 ```text
 /pipelines/customer-onboarding.yml
 ```
+
+Parameter:
+
+```text
+CustomerNumber
+CustomerName
+CustomerSlug
+TenantId
+AzureDocumentation
+OPNsenseDocumentation
+Firewalls
+```
+
+AVD und Vaultwarden sind dort bewusst ausgeschlossen.
 
 Implementierte Stages:
 
@@ -304,6 +348,8 @@ Keine langlebigen PATs oder Client Secrets als produktiver Standard.
 - `System.AccessToken`-Fallback
 - `pipelines/customer-onboarding.yml`
 - Validate → Dry Run → Approval → Apply → Verify
+- dokumentationsbezogene Parameterisierung
+- harte Abgrenzung von AVD/Vaultwarden im Customer-Onboarding
 - `docs/Techniker-Workflow.md`
 
 ### Noch offen / nicht runtime-verifiziert
@@ -315,5 +361,34 @@ Keine langlebigen PATs oder Client Secrets als produktiver Standard.
 - Pipeline-Dry-Run tatsächlich ausführen
 - Apply gegen Test-Provisionierung tatsächlich ausführen
 - Post-Apply-Idempotenzprüfung tatsächlich verifizieren
+- kontrollierte Persistierung des generierten CustomerConfiguration-Scaffolds
 
-Bis diese Azure-DevOps-seitigen Schritte durchgeführt wurden, ist der Technikerweg **code-seitig implementiert, aber noch nicht produktiv verifiziert**.
+## 11. Separater IaC-Techniker-/Deployment-Weg
+
+### Bereits beschlossen
+
+AVD und Vaultwarden werden als IaC-Produkte unter `20-IaC` geführt.
+
+### Noch offen
+
+Der zentrale Technikerweg für IaC-Deployments ist noch separat zu implementieren. Er darf nicht in `customer-onboarding.yml` integriert werden.
+
+Zielkette:
+
+```text
+20-IaC Produkt
+    ↓
+Validate
+    ↓
+Lint / Security
+    ↓
+Plan / What-If
+    ↓
+Approval
+    ↓
+Deploy
+    ↓
+Verify
+```
+
+Die konkreten produkt-/kundenspezifischen Parameter, Environments, Approvals und Service Connections werden in den jeweiligen IaC-Umsetzungsplänen gepflegt und nicht im Dokumentations-Onboarding vorweggenommen.
