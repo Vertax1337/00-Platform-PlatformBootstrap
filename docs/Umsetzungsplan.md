@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.6.1
+**Version:** 1.6.2
 
 ## 1. Core
 
@@ -41,6 +41,7 @@ Enthält:
 - Namenskonventionen
 - Plattform-/Security-Dokumentation
 - zentralen Techniker-Onboarding-Workflow als Azure Pipeline
+- lokales interaktives Onboarding-Frontend für Entwicklung und Regressionstests
 
 ### `PipelineTemplates`
 
@@ -259,10 +260,30 @@ Apply
 Post-Apply Verify
 ```
 
-Das zugrunde liegende PowerShell-Skript bleibt identisch zur lokalen Entwicklungs-/Debug-Ausführung:
+Das gemeinsame Backend ist:
 
 ```text
 bootstrap/New-BSSECustomerProject.ps1
+```
+
+Für lokale Entwicklung/Regressionstests existiert zusätzlich:
+
+```text
+bootstrap/Start-BSSECustomerOnboarding.ps1
+```
+
+Der lokale Wrapper fragt dieselben fachlichen Eingaben ab wie die Pipeline und führt denselben Ablauf aus:
+
+```text
+Eingaben
+    ↓
+Dry Run
+    ↓
+lokale Bestätigung
+    ↓
+Apply
+    ↓
+Post-Apply Verify
 ```
 
 ### Automatische Laufzeit-/Authentifizierungserkennung
@@ -343,6 +364,9 @@ Keine langlebigen PATs oder Client Secrets als produktiver Standard.
 
 - Dual-Runtime-Erkennung Local/Pipeline
 - lokale Selbstheilungslogik bleibt erhalten
+- `Start-BSSECustomerOnboarding.ps1` als lokales interaktives Frontend
+- lokale Eingabemaske fachlich identisch zur Pipeline-Parameterisierung
+- lokaler Dry Run → Bestätigung → Apply → Verify
 - nicht-interaktiver Pipeline-Modus
 - AzureCLI@3-/Service-Connection-Unterstützung
 - `System.AccessToken`-Fallback
