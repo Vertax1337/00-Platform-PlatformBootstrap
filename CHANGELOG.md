@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.7
+
+- lokaler und zentraler Customer-Onboarding-Weg auf denselben vollständigen Zielablauf vereinheitlicht
+- neues `bootstrap/Sync-BSSECustomerConfiguration.ps1` für persistente CustomerConfiguration
+- fehlende Bootstrap-Zieldateien werden geplant/angelegt, identische Dateien bleiben unverändert, abweichende vorhandene Dateien führen zu `BLOCKED`
+- CustomerConfiguration wird nicht mehr nur als flüchtiges lokales/Agent-Scaffold behandelt
+- Git-Persistenz verwendet Azure-DevOps-OAuth-/Entra-Token ohne Token in der Remote-URL
+- lokales `Start-BSSECustomerOnboarding.ps1` prüft und persistiert Customer Boundary + CustomerConfiguration und verifiziert beide nach Apply erneut
+- `customer-onboarding.yml` prüft und persistiert Customer Boundary + CustomerConfiguration
+- Pipeline setzt `hasChanges` als Output; Approval/Apply werden ohne geplante Änderung übersprungen
+- Post-Apply-Verify prüft beide Bereiche auf verbleibende PLAN/CREATE/RENAME/BLOCKED-Zustände
+- neues idempotentes `Register-BSSECustomerOnboardingPipeline.ps1`; erster Run wird bei Registrierung bewusst übersprungen
+- neues nicht-mutierendes `Test-BSSECustomerOnboardingReadiness.ps1`
+- neues `docs/Customer-Onboarding-Setup.md` für WIF-Service-Connection und Least-Privilege-Plattformsetup
+- Zielberechtigung der PlatformBootstrap-Identität: keine pauschale Project-Collection-Administrator-Mitgliedschaft; collection-level `Create new projects = Allow` plus erforderlicher Projektzugriff
+- Source-of-Truth auf v1.7 aktualisiert
+- Runtime-Verifikation bleibt bis zum geplanten realen Test ausdrücklich offen
+
 ## v1.6.2
 
 - neues lokales interaktives Frontend `bootstrap/Start-BSSECustomerOnboarding.ps1`
