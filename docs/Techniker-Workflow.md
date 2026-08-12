@@ -20,6 +20,8 @@ Für Entwicklung, Regressionstests und diesen einmaligen First-Run existiert:
 bootstrap/Start-BSSECustomerOnboarding.ps1
 ```
 
+Project Branding ist Bestandteil der Projekt-Provisionierung selbst und benötigt keinen separaten Techniker-Schritt.
+
 ## Verbindliche Architekturgrenze
 
 `Customer-Onboarding` ist **kein IaC-Deployment-Workflow**.
@@ -27,6 +29,7 @@ bootstrap/Start-BSSECustomerOnboarding.ps1
 Dieser Workflow behandelt ausschließlich:
 
 - Kundenprojekt / Kunden-Repositories,
+- generisches Customer-Project-Branding,
 - `AzureDocumentation`,
 - `OPNsenseDocumentation`,
 - optionale OPNsense RAW-Backup-Repositories `Firewall-*`,
@@ -94,6 +97,8 @@ Der lokale Self-Hosting-Bootstrap behandelt als Sollzustand:
 ```text
 Core-Projekte/-Repositories
         ↓
+Core-Project-Branding
+        ↓
 00-Platform/PlatformBootstrap
         ↓
 sp-bsse-platform-bootstrap-azdo
@@ -110,6 +115,8 @@ Customer-Onboarding Pipeline
         ↓
 Pipeline-spezifische Service-Connection-Autorisierung
 ```
+
+Die Core-Avatare werden über dieselbe zentrale Branding-Komponente verwaltet wie Customer-Projekte.
 
 ### Voraussetzungen außerhalb des Skripts
 
@@ -190,6 +197,8 @@ Customer-Onboarding
 
 autorisiert.
 
+Project Branding verwendet dieselbe bestehende Authentifizierung. Es wird kein zusätzliches PAT oder Client Secret eingeführt.
+
 ## 4. Normaler lokaler Customer-Onboarding-Weg
 
 Nach erfolgreicher Dependency-Prüfung fragt das lokale Frontend:
@@ -207,7 +216,7 @@ Ablauf:
 ```text
 Eingaben
     ↓
-Dry Run Customer Boundary
+Dry Run Customer Boundary + Project Branding
     ↓
 Dry Run CustomerConfiguration
     ↓
@@ -217,7 +226,7 @@ keine Änderungen? → erfolgreich beenden
     ↓
 lokale Freigabe
     ↓
-Apply Customer Boundary
+Apply Customer Boundary + Project Branding
     ↓
 Apply CustomerConfiguration
     ↓
@@ -226,7 +235,7 @@ Post-Apply Dry Run beider Bereiche
 Idempotenz-Verifikation
 ```
 
-`[BLOCKED]` verhindert ein Apply.
+`[BLOCKED]` verhindert ein Apply. Das gilt auch für Asset-, Project-ID-, Avatar-API- oder Project-Property-Fehler des Brandings.
 
 ## 5. Zentraler Technikerweg
 
@@ -251,6 +260,12 @@ Pipeline-Parameter:
 
 AVD- oder Vaultwarden-Parameter existieren bewusst nicht.
 
+Es existiert bewusst **kein** Project-Icon-Parameter. Jedes `CUST-*` erhält automatisch:
+
+```text
+assets/project-icons/cust-generic.png
+```
+
 ### Stages
 
 ```text
@@ -261,9 +276,9 @@ Apply
 Verify
 ```
 
-`DryRun` setzt `hasChanges`. Wenn weder Kundenboundary noch `CustomerConfiguration` einen `[PLAN]`-Zustand melden, werden Approval und Apply übersprungen.
+`DryRun` setzt `hasChanges`. Wenn weder Kundenboundary einschließlich Project Branding noch `CustomerConfiguration` einen `[PLAN]`-Zustand melden, werden Approval und Apply übersprungen.
 
-`Verify` führt nach Apply beide Dry Runs erneut aus und schlägt fehl, wenn `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` verbleibt.
+`Verify` führt nach Apply beide Dry Runs erneut aus und schlägt fehl, wenn `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` verbleibt. Das Branding muss im stabilen Zustand über seinen verwalteten SHA-256-Marker als `EXISTS` erscheinen.
 
 ## 6. Gemeinsame Authentifizierungslogik
 
@@ -313,7 +328,31 @@ Datei existiert abweichend
 
 Der Git-Push erfolgt erst nach erfolgreichem Vergleich. Das Azure-DevOps-OAuth-/Entra-Token wird prozesslokal verwendet und nicht in die Remote-URL geschrieben.
 
-## 8. Readiness-Check
+## 8. Project Branding
+
+Zentrale Implementierung:
+
+```text
+bootstrap/BSSE.AzureDevOps.Branding.ps1
+```
+
+Customer-Mapping:
+
+```text
+CUST-* → assets/project-icons/cust-generic.png
+```
+
+Die Core-Projekte verwenden ihre jeweils fest zugeordneten Assets. Der Bootstrap verwaltet den idempotenten Zustand über:
+
+```text
+BSSE.PlatformBootstrap.ProjectAvatarSha256
+```
+
+Fehlt oder unterscheidet sich der Marker, wird der Avatar im Dry Run als `PLAN` ausgewiesen. Bei Apply wird zuerst die offizielle Project-Avatar-API aufgerufen; nur nach erfolgreichem API-Resultat wird der SHA-256-Marker geschrieben und anschließend wieder gelesen/verifiziert.
+
+Die dokumentierte Project-Avatar-Core-API bietet keinen Avatar-GET-Readback. Eine rein manuelle Avatar-Änderung außerhalb des Bootstraps ist deshalb bei unverändertem Marker nicht zuverlässig erkennbar. Details: `docs/Project-Branding.md`.
+
+## 9. Readiness-Check
 
 Nach der Erstinitialisierung beziehungsweise vor dem ersten realen Kunden-Test:
 
@@ -330,7 +369,7 @@ PLAN                    → NOT READY / Dependency fehlt
 BLOCKED / Fehler         → NOT READY
 ```
 
-## 9. Implementierungsstatus
+## 10. Implementierungsstatus
 
 ### Bereits beschlossen
 
@@ -339,29 +378,25 @@ BLOCKED / Fehler         → NOT READY
 - automatische Dependency-Erkennung vor lokalem Kunden-Onboarding,
 - separate lokale Freigabe für Plattforminitialisierung,
 - Pipeline darf sich nicht selbst privilegieren,
-- Dokumentation und IaC strikt getrennt.
+- Dokumentation und IaC strikt getrennt,
+- Project Branding ist Teil der Projekt-Provisionierung und kein manueller Techniker-Schritt.
 
-### Im Repository implementiert
+### Code-seitig im Branding-Branch implementiert
 
-- automatische Local-/Pipeline-Erkennung,
-- `Initialize-BSSEPlatformDependencies.ps1`,
-- Dependency-Preflight im lokalen Frontend,
-- Core-Bootstrap-Integration,
-- sicherer Seed von `PlatformBootstrap`,
-- secretless Entra-App/SP-Sollzustand,
-- Azure-DevOps-Entitlement Basic + Readers,
-- gezielte `Create new projects`-ACL,
-- dynamische WIF-Service-Endpoint-Type-Erkennung,
-- federated-credential-Sollzustand,
-- Pipeline-Registrierung und pipeline-spezifische Service-Connection-Autorisierung,
-- lokales Customer-Onboarding,
-- zentraler Pipelineweg,
-- persistente `CustomerConfiguration`,
-- Readiness-Check.
+- zentrale `BSSE.AzureDevOps.Branding.ps1`,
+- Core-Project-Branding-Integration,
+- automatisches Customer-Project-Branding,
+- SHA-256-Markerstrategie,
+- Asset-/PNG-Validierung,
+- Avatar-API- und Marker-Fail-Closed-Validierung,
+- bestehende Local-/Pipeline-Authentifizierung wird wiederverwendet,
+- Mapping-/Asset-Regressionstest.
+
+Der Branding-Branch darf erst nach versionierter Aufnahme der fünf freigegebenen PNG-Assets als merge-fertig betrachtet werden.
 
 ### Noch nicht runtime-verifiziert
 
-Bis zum ersten echten Plattform-First-Run dürfen insbesondere nicht als tatsächlich bestätigt gelten:
+Bis zum ersten echten Plattform-/Branding-Lauf dürfen insbesondere nicht als tatsächlich bestätigt gelten:
 
 - reale Entra-App/SP-Erstellung,
 - reales Azure-DevOps-Service-Principal-Entitlement,
@@ -372,9 +407,12 @@ Bis zum ersten echten Plattform-First-Run dürfen insbesondere nicht als tatsäc
 - pipeline-spezifische Endpoint-Autorisierung,
 - WIF-Authentifizierung der Pipeline,
 - realer Git-Push in `CustomerConfiguration`,
+- realer Project-Avatar-PUT,
+- realer Project-Property-Marker-Write/Readback,
+- tatsächliche Anzeige der Icons in Azure DevOps,
 - realer Apply-/Post-Apply-Idempotenzlauf.
 
-## 10. Separater IaC-Technikerweg
+## 11. Separater IaC-Technikerweg
 
 AVD und Vaultwarden bleiben außerhalb dieses Workflows:
 
