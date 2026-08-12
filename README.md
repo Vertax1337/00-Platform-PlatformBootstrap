@@ -1,4 +1,4 @@
-# BSSE Azure DevOps Platform – Bootstrap v1.5
+# BSSE Azure DevOps Platform – Bootstrap v1.5.1
 
 ## Zielmodell
 
@@ -12,6 +12,8 @@ BSSE-CloudOps
 │   ├── SecurityValidation
 │   └── SharedModules
 ├── 10-Automation
+│   ├── AzureInfrastructureCollector
+│   └── 10-Automation-OPNsenseDocumentation
 ├── 20-IaC
 ├── 99-LAB
 │
@@ -22,7 +24,6 @@ BSSE-CloudOps
 ```
 
 Die interne Kunden-/Debitorennummer ist die stabile technische Kunden-ID.
-
 
 ## Wiederholte Läufe / Umfirmierung
 
@@ -115,7 +116,7 @@ Apply:
 CUST-xxx/Firewall-*
     = RAW Backup + Git History
 
-10-Automation/OPNsenseDocumentation
+10-Automation/10-Automation-OPNsenseDocumentation
     = Sanitizer + Validator + Parser/Normalizer
 
 00-Platform/DocumentationEngine
@@ -152,7 +153,6 @@ RAW-Konfigurationen dürfen niemals in:
 
 kopiert werden.
 
-
 ## Neu in v1.4.1 – robuste Listenparameter
 
 Beim Aufruf über `pwsh.exe -File` werden Komma-Listen je nach Aufrufkontext als ein einzelner String übergeben.
@@ -177,7 +177,6 @@ Für Firewalls gilt dasselbe:
 ```
 
 oder einzelne Array-Werte bei direktem Aufruf innerhalb einer PowerShell-Sitzung.
-
 
 ## Neu in v1.5 – eigenes `PlatformBootstrap` Repository
 
@@ -253,3 +252,34 @@ PlatformBootstrap/
 ├── CHANGELOG.md
 └── .gitignore
 ```
+
+## Neu in v1.5.1 – Repositoryname OPNsenseDocumentation
+
+Für das Azure-DevOps-Projekt `10-Automation` ist der verifizierte Sollname des OPNsense-Dokumentationsrepositories:
+
+```text
+10-Automation-OPNsenseDocumentation
+```
+
+Die lokale Zielstruktur lautet entsprechend:
+
+```text
+Repositorys/
+└── DEVOPS_Plattform/
+    └── 10-Automation/
+        └── 10-Automation-OPNsenseDocumentation/
+```
+
+Der Modulbezeichner `OPNsenseDocumentation` bleibt unverändert. Er ist ein fachlicher Bootstrap-Parameter und **kein Repositoryname**.
+
+Für andere Repositories ist damit noch **keine globale Umbenennung auf `<Projekt>-<Repository>` beschlossen**. Bestehende Namen wie `AzureInfrastructureCollector`, `PipelineTemplates` oder `DocumentationEngine` bleiben unverändert.
+
+### Bestandsschutz / Idempotenz
+
+Existiert `10-Automation-OPNsenseDocumentation`, zeigt der Dry Run:
+
+```text
+[EXISTS] Repo 10-Automation-OPNsenseDocumentation (no change)
+```
+
+Existiert nur ein Legacy-Repository `OPNsenseDocumentation` oder `OpenSenseDocumentation`, wird **kein zweites Repository automatisch erzeugt**. Der Bootstrap blockiert die automatische Änderung und verlangt eine bewusste manuelle Prüfung/Umbenennung.
