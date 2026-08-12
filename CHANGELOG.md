@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.5.1
+
+- Sollname des OPNsense-Dokumentationsrepositories auf `10-Automation-OPNsenseDocumentation` korrigiert
+- Core-Bootstrap erkennt das bestehende Repository als `EXISTS / no change`
+- Legacy-Namen `OPNsenseDocumentation` und `OpenSenseDocumentation` werden nicht mehr als Soll-Repositories provisioniert
+- Fail-safe Legacy-Schutz verhindert bei alten Namen die automatische Anlage eines Duplikats bzw. automatische Umbenennung
+- Modulbezeichner `OPNsenseDocumentation` bleibt unverändert, da er kein Repositoryname ist
+- Dokumentation/Namenskonventionen aktualisiert; keine globale Umbenennung anderer Repositories
+
 ## v1.5
 
 - neues Repository `00-Platform/PlatformBootstrap`
@@ -8,14 +17,12 @@
 - erneuter Bootstrap-Lauf ergänzt bei bestehenden Installationen nur das fehlende `PlatformBootstrap`
 - Plattformdokumentation und Namenskonventionen entsprechend aktualisiert
 
-
 ## v1.4.1
 
 - `-Modules` akzeptiert jetzt Komma-/Semikolon-Listen bei Aufruf über `pwsh.exe -File`
 - `-Firewalls` akzeptiert ebenfalls Komma-/Semikolon-Listen
 - Modulvalidierung erfolgt nach der Normalisierung
 - doppelte Module/Firewall-Einträge werden automatisch entfernt
-
 
 ## v1.4
 
