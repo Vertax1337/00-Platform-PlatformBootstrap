@@ -1,4 +1,4 @@
-# BSSE Azure DevOps Platform – Bootstrap v1.5.2
+# BSSE Azure DevOps Platform – Bootstrap v1.6
 
 ## Zielmodell
 
@@ -174,3 +174,65 @@ Sind die Soll-Repositories vorhanden, zeigt der Dry Run:
 ```
 
 Existiert ausschließlich ein Legacy-Repository `AzureInfrastructureCollector`, `OPNsenseDocumentation` oder `OpenSenseDocumentation`, wird **kein zweites Repository automatisch erzeugt**. Der Bootstrap blockiert die automatische Änderung und verlangt eine bewusste manuelle Prüfung/Umbenennung.
+
+## v1.6 – lokaler Entwicklungsweg und zentraler Technikerweg
+
+Das gleiche PowerShell-Bootstrap wird jetzt in zwei Laufzeitmodi unterstützt:
+
+```text
+LOCAL
+→ Entwicklung / Debugging
+→ vorhandener az-Login / Cache / gezielter interaktiver Login
+
+PIPELINE
+→ normaler Technikerweg
+→ Azure DevOps Service Connection / WIF
+→ keine interaktive Anmeldung
+```
+
+Die Erkennung erfolgt automatisch in `bootstrap/BSSE.AzureDevOps.Common.ps1`.
+
+Bevorzugte Pipeline-Authentifizierung:
+
+```text
+AzureCLI@3
+connectionType: azureDevOps
+Service Connection: sc-platform-bootstrap-azdo
+Microsoft Entra Workload Identity Federation
+```
+
+Als Kompatibilitätsfallback kann ein explizit gemapptes `SYSTEM_ACCESSTOKEN` nicht-interaktiv an die Azure-DevOps-CLI gebunden werden. In einer Pipeline werden niemals `az login` oder Browser-Fallbacks gestartet.
+
+### Techniker-Pipeline
+
+```text
+/pipelines/customer-onboarding.yml
+```
+
+Ablauf:
+
+```text
+Validate
+  ↓
+Dry Run
+  ↓
+Manual Approval
+  ↓
+Apply
+  ↓
+Verify (erneuter Dry Run / Idempotenz)
+```
+
+Der Post-Apply-Verify schlägt fehl, wenn weiterhin `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` erkannt wird.
+
+### Noch nicht produktiv verifiziert
+
+Code und YAML sind im Repository implementiert. Azure-DevOps-seitig müssen noch eingerichtet und tatsächlich getestet werden:
+
+- `sc-platform-bootstrap-azdo`
+- Microsoft Entra Workload Identity Federation
+- minimale erforderliche Azure-DevOps-Berechtigungen
+- Pipeline-Registrierung aus `/pipelines/customer-onboarding.yml`
+- erster echter Dry Run / Apply / Verify
+
+Details: `docs/Techniker-Workflow.md` und `docs/Umsetzungsplan.md`.
