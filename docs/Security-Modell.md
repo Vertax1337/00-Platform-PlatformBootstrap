@@ -3,7 +3,7 @@
 ## Read-only Documentation
 
 - AzureInfrastructureCollector: Read-only
-- OPNsenseDocumentation: Verarbeitung verändert die Quell-Firewall nicht
+- OPNsenseDocumentation (Modul; Repo `10-Automation-OPNsenseDocumentation`): Verarbeitung verändert die Quell-Firewall nicht
 - Fail Closed
 
 ## OPNsense RAW Repository
