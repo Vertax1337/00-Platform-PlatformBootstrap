@@ -19,23 +19,25 @@ if ($Apply -and (Test-BSSEPipelineContext)) {
 Initialize-BSSEPlatformDependencies.ps1 darf Plattform-Dependencies nur aus einer
 lokalen, bewusst privilegierten Erstinitialisierung heraus verändern.
 
-In Azure Pipelines ist ausschließlich Verify/Dry-Run zulässig. Eine Pipeline darf
-sich ihre eigene Entra-Identität oder organisationsweiten Rechte nicht selbst geben.
+Eine Azure Pipeline darf sich ihre eigene Entra-Identität oder organisationsweiten
+Azure-DevOps-Rechte nicht selbst geben. In Pipelines ist nur Dry Run / Verify zulässig.
 "@
 }
 
 function Get-BSSEOrganizationName {
     param([Parameter(Mandatory)][string]$Url)
+
     $uri = [uri]$Url
     $segments = @($uri.AbsolutePath.Trim('/') -split '/')
     if (-not $segments.Count -or [string]::IsNullOrWhiteSpace($segments[0])) {
         throw "Azure-DevOps-Organisationsname konnte aus '$Url' nicht ermittelt werden."
     }
-    return $segments[0]
+
+    return [string]$segments[0]
 }
 
 function Get-BSSEDevOpsAccessToken {
-    $token = Invoke-BSSEAz -Arguments @(
+    $result = Invoke-BSSEAz -Arguments @(
         'account','get-access-token',
         '--resource','499b84ac-1321-427f-aa17-267ca6975798',
         '--query','accessToken',
@@ -43,11 +45,11 @@ function Get-BSSEDevOpsAccessToken {
         '--only-show-errors'
     )
 
-    if ($token.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($token.Output)) {
-        throw "Azure-DevOps-Entra-Zugriffstoken konnte nicht bezogen werden.`n$($token.Output)"
+    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
+        throw "Azure-DevOps-Entra-Zugriffstoken konnte nicht bezogen werden.`n$($result.Output)"
     }
 
-    return $token.Output.Trim()
+    return $result.Output.Trim()
 }
 
 function Invoke-BSSEDevOpsRest {
@@ -57,11 +59,10 @@ function Invoke-BSSEDevOpsRest {
         $Body
     )
 
-    $headers = @{ Authorization = "Bearer $(Get-BSSEDevOpsAccessToken)" }
     $invoke = @{
         Uri         = $Url
         Method      = $Method
-        Headers     = $headers
+        Headers     = @{ Authorization = "Bearer $(Get-BSSEDevOpsAccessToken)" }
         ErrorAction = 'Stop'
     }
 
@@ -73,12 +74,30 @@ function Invoke-BSSEDevOpsRest {
     return Invoke-RestMethod @invoke
 }
 
-function Get-BSSEEntraIdentity {
+function Get-BSSEProjectInfo {
+    param([Parameter(Mandatory)][string]$ProjectName)
+
+    $result = Invoke-BSSEAz -Arguments @(
+        'devops','project','show',
+        '--org',$OrganizationUrl,
+        '--project',$ProjectName,
+        '--output','json',
+        '--only-show-errors'
+    )
+
+    if ($result.ExitCode -ne 0) {
+        return $null
+    }
+
+    return ($result.Output | ConvertFrom-Json)
+}
+
+function Get-BSSEEntraIdentityState {
     param([Parameter(Mandatory)][string]$DisplayName)
 
     $spResult = Invoke-BSSEAz -Arguments @(
         'ad','sp','list',
-        '--display-name', $DisplayName,
+        '--display-name',$DisplayName,
         '--output','json',
         '--only-show-errors'
     )
@@ -95,7 +114,7 @@ function Get-BSSEEntraIdentity {
 
     $appResult = Invoke-BSSEAz -Arguments @(
         'ad','app','list',
-        '--display-name', $DisplayName,
+        '--display-name',$DisplayName,
         '--output','json',
         '--only-show-errors'
     )
@@ -103,23 +122,23 @@ function Get-BSSEEntraIdentity {
         throw "Entra App Registrations konnten nicht gelesen werden.`n$($appResult.Output)"
     }
 
-    $apps = @($appResult.Output | ConvertFrom-Json) |
+    $applications = @($appResult.Output | ConvertFrom-Json) |
         Where-Object { $_.displayName -eq $DisplayName }
 
-    if ($apps.Count -gt 1) {
+    if ($applications.Count -gt 1) {
         throw "Mehrere Entra App Registrations heißen exakt '$DisplayName'. Eindeutige Plattformidentität erforderlich."
     }
 
     return [pscustomobject]@{
         ServicePrincipal = if ($principals.Count -eq 1) { $principals[0] } else { $null }
-        Application      = if ($apps.Count -eq 1) { $apps[0] } else { $null }
+        Application      = if ($applications.Count -eq 1) { $applications[0] } else { $null }
     }
 }
 
 function Ensure-BSSEEntraIdentity {
     param([Parameter(Mandatory)][string]$DisplayName)
 
-    $state = Get-BSSEEntraIdentity -DisplayName $DisplayName
+    $state = Get-BSSEEntraIdentityState -DisplayName $DisplayName
 
     if ($state.ServicePrincipal) {
         Write-Host "[EXISTS] Entra service principal $DisplayName" -ForegroundColor DarkGray
@@ -129,7 +148,11 @@ function Ensure-BSSEEntraIdentity {
     if (-not $Apply) {
         if ($state.Application) {
             Write-Host "[PLAN] Materialize service principal for existing Entra app $DisplayName" -ForegroundColor Yellow
-            return [pscustomobject]@{ appId = $state.Application.appId; id = $null; displayName = $DisplayName }
+            return [pscustomobject]@{
+                appId       = $state.Application.appId
+                id          = $null
+                displayName = $DisplayName
+            }
         }
 
         Write-Host "[PLAN] Create passwordless Entra app/service principal $DisplayName" -ForegroundColor Yellow
@@ -140,7 +163,7 @@ function Ensure-BSSEEntraIdentity {
         Write-Host "[CREATE] Service principal for existing Entra app $DisplayName" -ForegroundColor Green
         $create = Invoke-BSSEAz -Arguments @(
             'ad','sp','create',
-            '--id', $state.Application.appId,
+            '--id',$state.Application.appId,
             '--output','json',
             '--only-show-errors'
         )
@@ -149,7 +172,7 @@ function Ensure-BSSEEntraIdentity {
         Write-Host "[CREATE] Passwordless Entra app/service principal $DisplayName" -ForegroundColor Green
         $create = Invoke-BSSEAz -Arguments @(
             'ad','sp','create-for-rbac',
-            '--name', $DisplayName,
+            '--name',$DisplayName,
             '--create-password','false',
             '--output','json',
             '--only-show-errors'
@@ -164,12 +187,12 @@ Fehler:
 $($create.Output)
 
 Der angemeldete Erstinstallations-Administrator benötigt die Entra-Berechtigung,
-eine App Registration/Service Principal anzulegen. Der Bootstrap eskaliert diese
-Berechtigung nicht selbst.
+eine App Registration / einen Service Principal anzulegen. Der Bootstrap eskaliert
+diese Berechtigung nicht selbst.
 "@
     }
 
-    $state = Get-BSSEEntraIdentity -DisplayName $DisplayName
+    $state = Get-BSSEEntraIdentityState -DisplayName $DisplayName
     if (-not $state.ServicePrincipal) {
         throw "Entra service principal '$DisplayName' wurde nach der Erstellung nicht wiedergefunden."
     }
@@ -181,7 +204,6 @@ Berechtigung nicht selbst.
 function Get-BSSEAzureDevOpsGraphServicePrincipals {
     param([Parameter(Mandatory)][string]$OrganizationName)
 
-    # The Graph API is paged. Follow continuation tokens until none remains.
     $all = @()
     $continuation = $null
 
@@ -191,10 +213,12 @@ function Get-BSSEAzureDevOpsGraphServicePrincipals {
             $url += "&continuationToken=$([uri]::EscapeDataString($continuation))"
         }
 
-        # Invoke-RestMethod does not expose continuation headers conveniently in all PowerShell versions.
-        # az rest exposes response headers only with debug, so use Invoke-WebRequest for this paged read.
-        $headers = @{ Authorization = "Bearer $(Get-BSSEDevOpsAccessToken)" }
-        $response = Invoke-WebRequest -Uri $url -Headers $headers -Method GET -ErrorAction Stop
+        $response = Invoke-WebRequest `
+            -Uri $url `
+            -Headers @{ Authorization = "Bearer $(Get-BSSEDevOpsAccessToken)" } `
+            -Method GET `
+            -ErrorAction Stop
+
         $body = $response.Content | ConvertFrom-Json
         $all += @($body.value)
 
@@ -211,21 +235,6 @@ function Get-BSSEAzureDevOpsGraphServicePrincipals {
     return @($all)
 }
 
-function Get-BSSEProjectInfo {
-    param([Parameter(Mandatory)][string]$ProjectName)
-
-    $result = Invoke-BSSEAz -Arguments @(
-        'devops','project','show',
-        '--org', $OrganizationUrl,
-        '--project', $ProjectName,
-        '--output','json',
-        '--only-show-errors'
-    )
-
-    if ($result.ExitCode -ne 0) { return $null }
-    return ($result.Output | ConvertFrom-Json)
-}
-
 function Ensure-BSSEAzureDevOpsEntitlement {
     param(
         [Parameter(Mandatory)]$EntraServicePrincipal,
@@ -234,7 +243,7 @@ function Ensure-BSSEAzureDevOpsEntitlement {
     )
 
     if (-not $EntraServicePrincipal.id) {
-        Write-Host "[PLAN] Add $IdentityName to Azure DevOps with Basic + $Project Readers" -ForegroundColor Yellow
+        Write-Host "[PLAN] Add $IdentityName to Azure DevOps: Basic + $Project/Readers" -ForegroundColor Yellow
         return $null
     }
 
@@ -270,9 +279,9 @@ function Ensure-BSSEAzureDevOpsEntitlement {
             }
         }
 
-        $addUrl = "https://vsaex.dev.azure.com/$OrganizationName/_apis/serviceprincipalentitlements?api-version=7.1-preview.1"
-        $response = Invoke-BSSEDevOpsRest -Method POST -Url $addUrl -Body $body
-        if (-not $response.operationResult.isSuccess) {
+        $url = "https://vsaex.dev.azure.com/$OrganizationName/_apis/serviceprincipalentitlements?api-version=7.1-preview.1"
+        $response = Invoke-BSSEDevOpsRest -Method POST -Url $url -Body $body
+        if ($response.operationResult -and -not $response.operationResult.isSuccess) {
             throw "Azure DevOps service-principal entitlement konnte nicht angelegt werden: $($response | ConvertTo-Json -Depth 20)"
         }
 
@@ -284,6 +293,7 @@ function Ensure-BSSEAzureDevOpsEntitlement {
     }
 
     $graphPrincipal = $matches[0]
+
     $storageUrl = "https://vssps.dev.azure.com/$OrganizationName/_apis/graph/storagekeys/$([uri]::EscapeDataString($graphPrincipal.descriptor))?api-version=7.1"
     $storage = Invoke-BSSEDevOpsRest -Method GET -Url $storageUrl
     if (-not $storage.value) {
@@ -294,13 +304,13 @@ function Ensure-BSSEAzureDevOpsEntitlement {
     $entitlement = Invoke-BSSEDevOpsRest -Method GET -Url $entitlementUrl
 
     $basicOk = ($entitlement.accessLevel.accountLicenseType -eq 'express')
-    $projectReaderOk = @($entitlement.projectEntitlements | Where-Object {
+    $readerOk = @($entitlement.projectEntitlements | Where-Object {
         $_.projectRef.id -eq $ProjectInfo.id -and $_.group.groupType -eq 'projectReader'
     }).Count -gt 0
 
-    if (-not $basicOk -or -not $projectReaderOk) {
+    if (-not $basicOk -or -not $readerOk) {
         Write-Host "[BLOCKED] Existing Azure DevOps entitlement for $IdentityName differs from required Basic + $Project/Readers." -ForegroundColor Red
-        throw "Bestehende Plattformidentität wird nicht automatisch auf eine andere Azure-DevOps-Lizenz/Projektrolle umgeschrieben."
+        throw "Bestehende Plattformidentität wird nicht automatisch auf eine andere Lizenz/Projektrolle umgeschrieben."
     }
 
     Write-Host "[EXISTS] Azure DevOps entitlement: Basic + $Project/Readers" -ForegroundColor DarkGray
@@ -308,17 +318,17 @@ function Ensure-BSSEAzureDevOpsEntitlement {
 }
 
 function Get-BSSECollectionCreateProjectsMetadata {
-    $namespaceResult = Invoke-BSSEAz -Arguments @(
+    $result = Invoke-BSSEAz -Arguments @(
         'devops','security','permission','namespace','list',
-        '--org', $OrganizationUrl,
+        '--org',$OrganizationUrl,
         '--output','json',
         '--only-show-errors'
     )
-    if ($namespaceResult.ExitCode -ne 0) {
-        throw "Azure DevOps security namespaces konnten nicht gelesen werden.`n$($namespaceResult.Output)"
+    if ($result.ExitCode -ne 0) {
+        throw "Azure DevOps security namespaces konnten nicht gelesen werden.`n$($result.Output)"
     }
 
-    $collection = @($namespaceResult.Output | ConvertFrom-Json) |
+    $collection = @($result.Output | ConvertFrom-Json) |
         Where-Object { $_.name -eq 'Collection' } |
         Select-Object -First 1
 
@@ -326,13 +336,15 @@ function Get-BSSECollectionCreateProjectsMetadata {
         throw "Azure DevOps security namespace 'Collection' wurde nicht gefunden."
     }
 
-    $action = @($collection.actions | Where-Object { $_.name -eq 'CREATE_PROJECTS' }) | Select-Object -First 1
+    $action = @($collection.actions | Where-Object { $_.name -eq 'CREATE_PROJECTS' }) |
+        Select-Object -First 1
+
     if (-not $action) {
         throw "Collection permission action CREATE_PROJECTS wurde nicht gefunden."
     }
 
     return [pscustomobject]@{
-        NamespaceId = $collection.namespaceId
+        NamespaceId = [string]$collection.namespaceId
         Bit         = [int64]$action.bit
     }
 }
@@ -344,19 +356,19 @@ function Get-BSSERootCollectionTokenFromAdministrator {
         [Parameter(Mandatory)][string]$AdministratorSubject
     )
 
-    $list = Invoke-BSSEAz -Arguments @(
+    $result = Invoke-BSSEAz -Arguments @(
         'devops','security','permission','list',
-        '--org', $OrganizationUrl,
-        '--id', $NamespaceId,
-        '--subject', $AdministratorSubject,
+        '--org',$OrganizationUrl,
+        '--id',$NamespaceId,
+        '--subject',$AdministratorSubject,
         '--output','json',
         '--only-show-errors'
     )
-    if ($list.ExitCode -ne 0) {
-        throw "Collection security tokens konnten für '$AdministratorSubject' nicht gelesen werden.`n$($list.Output)"
+    if ($result.ExitCode -ne 0) {
+        throw "Collection security tokens konnten für '$AdministratorSubject' nicht gelesen werden.`n$($result.Output)"
     }
 
-    $items = @($list.Output | ConvertFrom-Json)
+    $items = @($result.Output | ConvertFrom-Json)
     $candidates = @($items | Where-Object {
         $_.token -and (([int64]$_.effectiveAllow -band $CreateProjectsBit) -eq $CreateProjectsBit)
     } | Sort-Object { ([string]$_.token).Length })
@@ -383,10 +395,10 @@ function Get-BSSEPermissionState {
 
     $result = Invoke-BSSEAz -Arguments @(
         'devops','security','permission','list',
-        '--org', $OrganizationUrl,
-        '--id', $NamespaceId,
-        '--subject', $Subject,
-        '--token', $Token,
+        '--org',$OrganizationUrl,
+        '--id',$NamespaceId,
+        '--subject',$Subject,
+        '--token',$Token,
         '--output','json',
         '--only-show-errors'
     )
@@ -396,12 +408,13 @@ function Get-BSSEPermissionState {
     }
 
     $items = @($result.Output | ConvertFrom-Json)
-    return @($items | Where-Object { $_.token -eq $Token } | Select-Object -First 1)[0]
+    $match = $items | Where-Object { $_.token -eq $Token } | Select-Object -First 1
+    return $match
 }
 
 function Ensure-BSSECreateProjectsPermission {
     param(
-        [Parameter(Mandatory)]$GraphPrincipal,
+        $GraphPrincipal,
         [Parameter(Mandatory)]$Session
     )
 
@@ -411,13 +424,11 @@ function Ensure-BSSECreateProjectsPermission {
     }
 
     $metadata = Get-BSSECollectionCreateProjectsMetadata
-    $adminSubject = if ($Session.Account -and $Session.Account.user -and $Session.Account.user.name) {
-        [string]$Session.Account.user.name
-    }
-    else {
+    if (-not $Session.Account -or -not $Session.Account.user -or [string]::IsNullOrWhiteSpace($Session.Account.user.name)) {
         throw "Aktueller lokaler Administrator konnte für die sichere Collection-Token-Ermittlung nicht bestimmt werden."
     }
 
+    $adminSubject = [string]$Session.Account.user.name
     $rootToken = Get-BSSERootCollectionTokenFromAdministrator `
         -NamespaceId $metadata.NamespaceId `
         -CreateProjectsBit $metadata.Bit `
@@ -446,11 +457,11 @@ function Ensure-BSSECreateProjectsPermission {
     Write-Host "[GRANT] Collection permission: Create new projects = Allow" -ForegroundColor Green
     $update = Invoke-BSSEAz -Arguments @(
         'devops','security','permission','update',
-        '--org', $OrganizationUrl,
-        '--id', $metadata.NamespaceId,
-        '--subject', $GraphPrincipal.descriptor,
-        '--token', $rootToken,
-        '--allow-bit', ([string]$metadata.Bit),
+        '--org',$OrganizationUrl,
+        '--id',$metadata.NamespaceId,
+        '--subject',$GraphPrincipal.descriptor,
+        '--token',$rootToken,
+        '--allow-bit',([string]$metadata.Bit),
         '--merge','true',
         '--output','json',
         '--only-show-errors'
@@ -459,7 +470,11 @@ function Ensure-BSSECreateProjectsPermission {
         throw "Create new projects konnte nicht vergeben werden.`n$($update.Output)"
     }
 
-    $state = Get-BSSEPermissionState -NamespaceId $metadata.NamespaceId -Subject $GraphPrincipal.descriptor -Token $rootToken
+    $state = Get-BSSEPermissionState `
+        -NamespaceId $metadata.NamespaceId `
+        -Subject $GraphPrincipal.descriptor `
+        -Token $rootToken
+
     if (-not $state -or (([int64]$state.effectiveAllow -band $metadata.Bit) -ne $metadata.Bit)) {
         throw "Create new projects konnte nach der Vergabe nicht verifiziert werden."
     }
@@ -483,13 +498,17 @@ function Invoke-BSSEGitWithBearer {
         $env:GIT_CONFIG_COUNT = '1'
         $env:GIT_CONFIG_KEY_0 = 'http.extraHeader'
         $env:GIT_CONFIG_VALUE_0 = "Authorization: Bearer $BearerToken"
-        if ($WorkingDirectory) { Set-Location $WorkingDirectory }
+
+        if ($WorkingDirectory) {
+            Set-Location $WorkingDirectory
+        }
 
         $output = & git @Arguments 2>&1
         $exitCode = $LASTEXITCODE
         if ($exitCode -ne 0) {
             throw "Git command failed: git $($Arguments -join ' ')`n$(($output | Out-String).Trim())"
         }
+
         return (($output | Out-String).Trim())
     }
     finally {
@@ -507,11 +526,22 @@ function Ensure-BSSEPlatformBootstrapRepositorySeeded {
         throw "Git wurde nicht gefunden. Die Erstinitialisierung kann PlatformBootstrap nicht sicher nach Azure Repos übertragen."
     }
 
-    $repoRootOutput = & git -C (Split-Path $PSScriptRoot -Parent) rev-parse --show-toplevel 2>&1
+    $localRoot = Split-Path $PSScriptRoot -Parent
+
+    $rootOutput = & git -C $localRoot rev-parse --show-toplevel 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Lokales PlatformBootstrap-Repository konnte nicht bestimmt werden: $(($repoRootOutput | Out-String).Trim())"
+        throw "Lokales PlatformBootstrap-Repository konnte nicht bestimmt werden: $(($rootOutput | Out-String).Trim())"
     }
-    $repoRoot = (($repoRootOutput | Select-Object -First 1) | Out-String).Trim()
+    $repoRoot = (($rootOutput | Select-Object -First 1) | Out-String).Trim()
+
+    $dirtyOutput = & git -C $repoRoot status --porcelain 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Lokaler Git-Status konnte nicht gelesen werden."
+    }
+    if (-not [string]::IsNullOrWhiteSpace(($dirtyOutput | Out-String))) {
+        Write-Host '[BLOCKED] Local PlatformBootstrap working tree contains uncommitted changes.' -ForegroundColor Red
+        throw "Erstinitialisierung verwendet ausschließlich einen committed Source-of-Truth. Committe oder verwerfe lokale Änderungen zuerst."
+    }
 
     $headOutput = & git -C $repoRoot rev-parse HEAD 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -521,9 +551,9 @@ function Ensure-BSSEPlatformBootstrapRepositorySeeded {
 
     $refsResult = Invoke-BSSEAz -Arguments @(
         'repos','ref','list',
-        '--org', $OrganizationUrl,
-        '--project', $Project,
-        '--repository', $Repository,
+        '--org',$OrganizationUrl,
+        '--project',$Project,
+        '--repository',$Repository,
         '--output','json',
         '--only-show-errors'
     )
@@ -536,25 +566,35 @@ function Ensure-BSSEPlatformBootstrapRepositorySeeded {
 
     if ($refs.Count -eq 0) {
         if (-not $Apply) {
-            Write-Host "[PLAN] Seed empty $Project/$Repository from local PlatformBootstrap HEAD $localHead" -ForegroundColor Yellow
+            Write-Host "[PLAN] Seed empty $Project/$Repository from local committed HEAD $localHead" -ForegroundColor Yellow
             return
         }
 
         Write-Host "[PUBLISH] Seed empty $Project/$Repository from local committed HEAD" -ForegroundColor Green
         $token = Get-BSSEDevOpsAccessToken
-        Invoke-BSSEGitWithBearer -BearerToken $token -WorkingDirectory $repoRoot -Arguments @(
-            'push', $Repo.remoteUrl, 'HEAD:refs/heads/main'
-        ) | Out-Null
+        Invoke-BSSEGitWithBearer `
+            -BearerToken $token `
+            -WorkingDirectory $repoRoot `
+            -Arguments @('push',$Repo.remoteUrl,'HEAD:refs/heads/main') | Out-Null
 
         $refsResult = Invoke-BSSEAz -Arguments @(
-            'repos','ref','list','--org',$OrganizationUrl,'--project',$Project,
-            '--repository',$Repository,'--output','json','--only-show-errors'
+            'repos','ref','list',
+            '--org',$OrganizationUrl,
+            '--project',$Project,
+            '--repository',$Repository,
+            '--output','json',
+            '--only-show-errors'
         )
+        if ($refsResult.ExitCode -ne 0) {
+            throw "Azure-Repo-Refs konnten nach Seed nicht gelesen werden.`n$($refsResult.Output)"
+        }
+
         $refs = @($refsResult.Output | ConvertFrom-Json)
         $mainRef = $refs | Where-Object { $_.name -eq 'refs/heads/main' } | Select-Object -First 1
         if (-not $mainRef -or $mainRef.objectId -ne $localHead) {
             throw "PlatformBootstrap main wurde nach dem Seed nicht mit lokalem HEAD verifiziert."
         }
+
         Write-Host "[OK] PlatformBootstrap Azure Repo seeded at $localHead" -ForegroundColor Green
         return
     }
@@ -565,7 +605,7 @@ function Ensure-BSSEPlatformBootstrapRepositorySeeded {
     }
 
     if ($mainRef.objectId -ne $localHead) {
-        Write-Host "[BLOCKED] Azure PlatformBootstrap main differs from local committed HEAD." -ForegroundColor Red
+        Write-Host '[BLOCKED] Azure PlatformBootstrap main differs from local committed HEAD.' -ForegroundColor Red
         Write-Host "          Azure: $($mainRef.objectId)" -ForegroundColor DarkGray
         Write-Host "          Local: $localHead" -ForegroundColor DarkGray
         throw "Source-of-Truth-Divergenz. Kein automatischer Force-Push."
@@ -595,10 +635,9 @@ function Resolve-BSSEEndpointInputValue {
 }
 
 function Get-BSSEAzureDevOpsServiceEndpointType {
-    param([Parameter(Mandatory)][string]$OrganizationName)
-
-    $typesUrl = "$($OrganizationUrl.TrimEnd('/'))/_apis/serviceendpoint/types?api-version=7.1"
-    $types = @( (Invoke-BSSEDevOpsRest -Method GET -Url $typesUrl).value )
+    $url = "$($OrganizationUrl.TrimEnd('/'))/_apis/serviceendpoint/types?api-version=7.1"
+    $response = Invoke-BSSEDevOpsRest -Method GET -Url $url
+    $types = @($response.value)
 
     $candidates = @($types | Where-Object {
         $_.displayName -eq 'Azure DevOps' -and
@@ -613,8 +652,7 @@ Organisation nicht eindeutig gefunden.
 Gefundene Kandidaten: $($candidates.Count)
 
 Der Bootstrap verwendet absichtlich keinen undokumentierten hartcodierten Endpoint-Typ.
-Prüfe, ob das Feature 'Azure DevOps service connection with Entra workload identity'
-in dieser Organisation verfügbar ist.
+Prüfe beim ersten Runtime-Lauf die von Azure DevOps gelieferten Endpoint-Type-Metadaten.
 "@
     }
 
@@ -630,15 +668,28 @@ function New-BSSEServiceEndpointConfiguration {
         [Parameter(Mandatory)][string]$Tenant
     )
 
-    $scheme = @($EndpointType.authenticationSchemes | Where-Object { $_.scheme -eq 'WorkloadIdentityFederation' }) | Select-Object -First 1
+    $scheme = @($EndpointType.authenticationSchemes | Where-Object {
+        $_.scheme -eq 'WorkloadIdentityFederation'
+    }) | Select-Object -First 1
+
+    if (-not $scheme) {
+        throw "WIF-Authentifizierungsschema fehlt im Azure-DevOps-Endpoint-Type."
+    }
+
     $data = @{ creationMode = 'Manual' }
     $authParameters = @{
-        tenantid            = $Tenant
-        serviceprincipalid  = $EntraServicePrincipal.appId
+        tenantid           = $Tenant
+        serviceprincipalid = $EntraServicePrincipal.appId
     }
 
     foreach ($descriptor in @($EndpointType.inputDescriptors)) {
-        $value = Resolve-BSSEEndpointInputValue -Id $descriptor.id -OrganizationName $OrganizationName -Tenant $Tenant -AppId $EntraServicePrincipal.appId -PrincipalId $EntraServicePrincipal.id
+        $value = Resolve-BSSEEndpointInputValue `
+            -Id $descriptor.id `
+            -OrganizationName $OrganizationName `
+            -Tenant $Tenant `
+            -AppId $EntraServicePrincipal.appId `
+            -PrincipalId $EntraServicePrincipal.id
+
         if ($null -ne $value) {
             $data[$descriptor.id] = $value
         }
@@ -648,7 +699,13 @@ function New-BSSEServiceEndpointConfiguration {
     }
 
     foreach ($descriptor in @($scheme.inputDescriptors)) {
-        $value = Resolve-BSSEEndpointInputValue -Id $descriptor.id -OrganizationName $OrganizationName -Tenant $Tenant -AppId $EntraServicePrincipal.appId -PrincipalId $EntraServicePrincipal.id
+        $value = Resolve-BSSEEndpointInputValue `
+            -Id $descriptor.id `
+            -OrganizationName $OrganizationName `
+            -Tenant $Tenant `
+            -AppId $EntraServicePrincipal.appId `
+            -PrincipalId $EntraServicePrincipal.id
+
         if ($null -ne $value) {
             $authParameters[$descriptor.id] = $value
         }
@@ -693,11 +750,31 @@ function Get-BSSEServiceConnection {
         throw "Service Connections konnten nicht gelesen werden.`n$($result.Output)"
     }
 
-    $matches = @($result.Output | ConvertFrom-Json) | Where-Object { $_.name -eq $ServiceConnectionName }
+    $matches = @(@($result.Output | ConvertFrom-Json) | Where-Object {
+        $_.name -eq $ServiceConnectionName
+    })
+
     if ($matches.Count -gt 1) {
         throw "Mehrere Service Connections heißen '$ServiceConnectionName'."
     }
-    return if ($matches.Count -eq 1) { $matches[0] } else { $null }
+
+    if ($matches.Count -eq 0) {
+        return $null
+    }
+
+    $show = Invoke-BSSEAz -Arguments @(
+        'devops','service-endpoint','show',
+        '--id',$matches[0].id,
+        '--org',$OrganizationUrl,
+        '--project',$Project,
+        '--output','json',
+        '--only-show-errors'
+    )
+    if ($show.ExitCode -ne 0) {
+        throw "Service Connection '$ServiceConnectionName' konnte nicht vollständig gelesen werden.`n$($show.Output)"
+    }
+
+    return ($show.Output | ConvertFrom-Json)
 }
 
 function Ensure-BSSEServiceConnection {
@@ -725,7 +802,7 @@ function Ensure-BSSEServiceConnection {
         return $endpoint
     }
 
-    $endpointType = Get-BSSEAzureDevOpsServiceEndpointType -OrganizationName $OrganizationName
+    $endpointType = Get-BSSEAzureDevOpsServiceEndpointType
 
     if (-not $Apply) {
         Write-Host "[PLAN] Create Azure DevOps WIF Service Connection $ServiceConnectionName" -ForegroundColor Yellow
@@ -743,6 +820,7 @@ function Ensure-BSSEServiceConnection {
     $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("bsse-service-endpoint-" + [guid]::NewGuid().ToString('N') + '.json')
     try {
         $configuration | ConvertTo-Json -Depth 40 | Set-Content -Path $temp -Encoding utf8
+
         Write-Host "[CREATE] Service Connection $ServiceConnectionName" -ForegroundColor Green
         $create = Invoke-BSSEAz -Arguments @(
             'devops','service-endpoint','create',
@@ -752,6 +830,7 @@ function Ensure-BSSEServiceConnection {
             '--output','json',
             '--only-show-errors'
         )
+
         if ($create.ExitCode -ne 0) {
             throw @"
 Azure DevOps WIF Service Connection konnte mit dem zur Laufzeit ermittelten Endpoint-Schema
@@ -759,8 +838,7 @@ nicht erstellt werden.
 
 $($create.Output)
 
-Es wurde kein alternativer/unsicherer Endpoint-Typ geraten. Der reale Endpoint-Type kann
-beim ersten Runtime-Test anhand seiner Metadaten weiter angepasst werden.
+Es wird bewusst kein alternativer oder undokumentierter Endpoint-Typ geraten.
 "@
         }
     }
@@ -785,7 +863,6 @@ function Ensure-BSSEFederatedCredential {
 
     if (-not $ServiceConnection) {
         if (-not $Apply) {
-            # Already emitted as part of service-connection plan.
             return
         }
         throw "Federated Credential kann ohne Service Connection nicht erstellt werden."
@@ -795,24 +872,7 @@ function Ensure-BSSEFederatedCredential {
     $subject = [string]$ServiceConnection.authorization.parameters.workloadIdentityFederationSubject
 
     if ([string]::IsNullOrWhiteSpace($issuer) -or [string]::IsNullOrWhiteSpace($subject)) {
-        $show = Invoke-BSSEAz -Arguments @(
-            'devops','service-endpoint','show',
-            '--id',$ServiceConnection.id,
-            '--org',$OrganizationUrl,
-            '--project',$Project,
-            '--output','json',
-            '--only-show-errors'
-        )
-        if ($show.ExitCode -eq 0) {
-            $detailed = $show.Output | ConvertFrom-Json
-            $issuer = [string]$detailed.authorization.parameters.workloadIdentityFederationIssuer
-            $subject = [string]$detailed.authorization.parameters.workloadIdentityFederationSubject
-            $ServiceConnection = $detailed
-        }
-    }
-
-    if ([string]::IsNullOrWhiteSpace($issuer) -or [string]::IsNullOrWhiteSpace($subject)) {
-        Write-Host "[BLOCKED] Service Connection exposes no WIF issuer/subject." -ForegroundColor Red
+        Write-Host '[BLOCKED] Service Connection exposes no WIF issuer/subject.' -ForegroundColor Red
         throw "Federated Credential kann ohne vom Service Endpoint erzeugten issuer/subject nicht sicher erstellt werden."
     }
 
@@ -827,8 +887,7 @@ function Ensure-BSSEFederatedCredential {
         throw "Federated Credentials konnten nicht gelesen werden.`n$($list.Output)"
     }
 
-    $fics = @($list.Output | ConvertFrom-Json)
-    $matches = @($fics | Where-Object { $_.name -eq $ficName })
+    $matches = @(@($list.Output | ConvertFrom-Json) | Where-Object { $_.name -eq $ficName })
     if ($matches.Count -gt 1) {
         throw "Mehrere federated credentials heißen '$ficName'."
     }
@@ -836,6 +895,7 @@ function Ensure-BSSEFederatedCredential {
     if ($matches.Count -eq 1) {
         $fic = $matches[0]
         $audienceOk = @($fic.audiences) -contains 'api://AzureADTokenExchange'
+
         if ($fic.issuer -ne $issuer -or $fic.subject -ne $subject -or -not $audienceOk) {
             Write-Host "[BLOCKED] Existing federated credential $ficName differs from Service Connection." -ForegroundColor Red
             throw "Federated Credential wird nicht automatisch ersetzt."
@@ -856,17 +916,20 @@ function Ensure-BSSEFederatedCredential {
         subject   = $subject
         audiences = @('api://AzureADTokenExchange')
     }
+
     $temp = Join-Path ([System.IO.Path]::GetTempPath()) ("bsse-fic-" + [guid]::NewGuid().ToString('N') + '.json')
     try {
         $parameters | ConvertTo-Json -Depth 10 | Set-Content -Path $temp -Encoding utf8
+
         Write-Host "[CREATE] Federated credential $ficName" -ForegroundColor Green
         $create = Invoke-BSSEAz -Arguments @(
             'ad','app','federated-credential','create',
             '--id',$EntraServicePrincipal.appId,
-            '--parameters',("@$temp"),
+            '--parameters',$temp,
             '--output','none',
             '--only-show-errors'
         )
+
         if ($create.ExitCode -ne 0) {
             throw "Federated Credential konnte nicht erstellt werden.`n$($create.Output)"
         }
@@ -894,16 +957,18 @@ function Ensure-BSSEPipelineRegistrationAndAuthorization {
         '-YamlPath',$YamlPath,
         '-ServiceConnectionName',$ServiceConnectionName
     )
-    if ($Apply) { $registerArgs += '-Apply' }
-
-    & "$PSScriptRoot\Register-BSSECustomerOnboardingPipeline.ps1" @registerArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Pipeline registration failed."
+    if ($Apply) {
+        $registerArgs += '-Apply'
     }
 
+    & "$PSScriptRoot\Register-BSSECustomerOnboardingPipeline.ps1" @registerArgs
+
     $pipelinesResult = Invoke-BSSEAz -Arguments @(
-        'pipelines','list','--org',$OrganizationUrl,'--project',$Project,
-        '--output','json','--only-show-errors'
+        'pipelines','list',
+        '--org',$OrganizationUrl,
+        '--project',$Project,
+        '--output','json',
+        '--only-show-errors'
     )
     if ($pipelinesResult.ExitCode -ne 0) {
         throw "Pipelines konnten nach Registrierung nicht gelesen werden.`n$($pipelinesResult.Output)"
@@ -921,13 +986,20 @@ function Ensure-BSSEPipelineRegistrationAndAuthorization {
         throw "Pipeline '$PipelineName' wurde nicht gefunden."
     }
 
-    $permissionsUrl = "$($OrganizationUrl.TrimEnd('/'))/$Project/_apis/pipelines/pipelinepermissions/endpoint/$($ServiceConnection.id)?api-version=7.1-preview.1"
-    $permissionState = $null
-    try { $permissionState = Invoke-BSSEDevOpsRest -Method GET -Url $permissionsUrl } catch { $permissionState = $null }
+    $url = "$($OrganizationUrl.TrimEnd('/'))/$Project/_apis/pipelines/pipelinepermissions/endpoint/$($ServiceConnection.id)?api-version=7.1-preview.1"
+    $state = $null
+    try {
+        $state = Invoke-BSSEDevOpsRest -Method GET -Url $url
+    }
+    catch {
+        $state = $null
+    }
 
     $authorized = $false
-    if ($permissionState) {
-        $authorized = @($permissionState.pipelines | Where-Object { $_.id -eq $pipeline.id -and $_.authorized }).Count -gt 0
+    if ($state) {
+        $authorized = @($state.pipelines | Where-Object {
+            $_.id -eq $pipeline.id -and $_.authorized
+        }).Count -gt 0
     }
 
     if ($authorized) {
@@ -941,14 +1013,25 @@ function Ensure-BSSEPipelineRegistrationAndAuthorization {
     }
 
     Write-Host "[GRANT] Pipeline-specific use of $ServiceConnectionName to $PipelineName" -ForegroundColor Green
-    $body = @{ pipelines = @(@{ id = [int]$pipeline.id; authorized = $true }) }
-    Invoke-BSSEDevOpsRest -Method PATCH -Url $permissionsUrl -Body $body | Out-Null
+    $body = @{
+        pipelines = @(
+            @{
+                id         = [int]$pipeline.id
+                authorized = $true
+            }
+        )
+    }
+    Invoke-BSSEDevOpsRest -Method PATCH -Url $url -Body $body | Out-Null
 
-    $permissionState = Invoke-BSSEDevOpsRest -Method GET -Url $permissionsUrl
-    $authorized = @($permissionState.pipelines | Where-Object { $_.id -eq $pipeline.id -and $_.authorized }).Count -gt 0
+    $state = Invoke-BSSEDevOpsRest -Method GET -Url $url
+    $authorized = @($state.pipelines | Where-Object {
+        $_.id -eq $pipeline.id -and $_.authorized
+    }).Count -gt 0
+
     if (-not $authorized) {
         throw "Pipeline-specific Service-Connection-Autorisierung konnte nicht verifiziert werden."
     }
+
     Write-Host "[OK] $PipelineName ist gezielt für $ServiceConnectionName autorisiert." -ForegroundColor Green
 }
 
@@ -972,6 +1055,7 @@ if ([string]::IsNullOrWhiteSpace($TenantId)) {
         $TenantId = [string]$profile.tenantId
     }
 }
+
 if ([string]::IsNullOrWhiteSpace($TenantId)) {
     throw "TenantId konnte weder explizit noch aus config/organizations.json bestimmt werden."
 }
@@ -981,29 +1065,35 @@ if (-not $currentAccount -or $currentAccount.tenantId -ne $TenantId) {
     if (Test-BSSEPipelineContext) {
         throw "Pipeline-Azure-Kontext ist nicht im erwarteten Tenant $TenantId."
     }
+
     Write-Host "[AUTO] Wechsle für die Plattform-Erstinitialisierung gezielt in Tenant $TenantId." -ForegroundColor Cyan
     Invoke-BSSEInteractiveAzureLogin -TenantId $TenantId
     $currentAccount = Get-BSSEAzureAccount
 }
+
 if (-not $currentAccount -or $currentAccount.tenantId -ne $TenantId) {
     throw "Aktiver Azure-CLI-Tenant ist nicht der erwartete Plattform-Tenant $TenantId."
 }
 Write-Host "[OK] Platform tenant context: $TenantId" -ForegroundColor Green
 
-# The core project/repository topology is itself a dependency. Reuse the existing idempotent core bootstrap.
 Write-Host ''
 Write-Host 'Core platform topology:' -ForegroundColor Cyan
 $coreArgs = @('-OrganizationUrl',$OrganizationUrl)
-if ($Apply) { $coreArgs += '-Apply' }
+if ($Apply) {
+    $coreArgs += '-Apply'
+}
 & "$PSScriptRoot\New-BSSEAzureDevOpsCore.ps1" @coreArgs
-if ($LASTEXITCODE -ne 0) { throw "Core platform bootstrap failed." }
 
 $projectInfo = Get-BSSEProjectInfo -ProjectName $Project
 if (-not $projectInfo) {
     if (-not $Apply) {
-        Write-Host "[PLAN] Remaining platform dependencies will be configured after $Project is created." -ForegroundColor Yellow
+        Write-Host "[PLAN] After core creation: seed $Project/$Repository" -ForegroundColor Yellow
+        Write-Host "[PLAN] After core creation: create/configure $IdentityName" -ForegroundColor Yellow
+        Write-Host "[PLAN] After core creation: create WIF Service Connection $ServiceConnectionName" -ForegroundColor Yellow
+        Write-Host "[PLAN] After core creation: register/authorize $PipelineName" -ForegroundColor Yellow
         return
     }
+
     throw "Projekt '$Project' fehlt nach Core-Apply."
 }
 
@@ -1014,6 +1104,7 @@ if (-not $repo) {
         Write-Host "[PLAN] Remaining dependencies require $Project/$Repository." -ForegroundColor Yellow
         return
     }
+
     throw "Repository '$Project/$Repository' fehlt nach Core-Apply."
 }
 
@@ -1024,7 +1115,11 @@ Ensure-BSSEPlatformBootstrapRepositorySeeded -Repo $repo
 Write-Host ''
 Write-Host 'Entra / Azure DevOps platform identity:' -ForegroundColor Cyan
 $entraSp = Ensure-BSSEEntraIdentity -DisplayName $IdentityName
-$graphSp = Ensure-BSSEAzureDevOpsEntitlement -EntraServicePrincipal $entraSp -ProjectInfo $projectInfo -OrganizationName $organizationName
+$graphSp = Ensure-BSSEAzureDevOpsEntitlement `
+    -EntraServicePrincipal $entraSp `
+    -ProjectInfo $projectInfo `
+    -OrganizationName $organizationName
+
 Ensure-BSSECreateProjectsPermission -GraphPrincipal $graphSp -Session $session
 
 Write-Host ''
@@ -1042,13 +1137,16 @@ $serviceConnection = Ensure-BSSEServiceConnection `
     -OrganizationName $organizationName `
     -Tenant $TenantId
 
-Ensure-BSSEFederatedCredential -EntraServicePrincipal $entraSp -ServiceConnection $serviceConnection
+Ensure-BSSEFederatedCredential `
+    -EntraServicePrincipal $entraSp `
+    -ServiceConnection $serviceConnection
+
 Ensure-BSSEPipelineRegistrationAndAuthorization -ServiceConnection $serviceConnection
 
 Write-Host ''
 if ($Apply) {
-    Write-Host '[OK] Platform dependencies were configured and verified without granting Project Collection Administrator.' -ForegroundColor Green
+    Write-Host '[OK] Platform dependencies configured and verified without Project Collection Administrator membership.' -ForegroundColor Green
 }
 else {
-    Write-Host '[OK] Platform dependency dry run/verification completed.' -ForegroundColor Cyan
+    Write-Host '[OK] Platform dependency dry run / verification completed.' -ForegroundColor Cyan
 }
