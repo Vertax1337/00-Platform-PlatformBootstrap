@@ -24,8 +24,11 @@ Write-Host 'BSSE Customer-Onboarding Readiness Check' -ForegroundColor Cyan
 Write-Host 'Dieser Check verändert keine Plattform- oder Kundenobjekte.' -ForegroundColor DarkGray
 Write-Host ''
 
+$repoRoot = Split-Path $PSScriptRoot -Parent
+
 $requiredLocalFiles = @(
     'BSSE.AzureDevOps.Common.ps1',
+    'BSSE.AzureDevOps.Branding.ps1',
     'New-BSSEAzureDevOpsCore.ps1',
     'Initialize-BSSEPlatformDependencies.ps1',
     'New-BSSECustomerProject.ps1',
@@ -43,7 +46,7 @@ foreach ($file in $requiredLocalFiles) {
     }
 }
 
-$pipelineYaml = Join-Path (Split-Path $PSScriptRoot -Parent) 'pipelines\customer-onboarding.yml'
+$pipelineYaml = Join-Path $repoRoot 'pipelines\customer-onboarding.yml'
 if (Test-Path $pipelineYaml) {
     Write-Ready 'Lokale Pipeline-YAML pipelines/customer-onboarding.yml vorhanden.'
 }
@@ -51,11 +54,33 @@ else {
     Write-NotReady 'Lokale Pipeline-YAML pipelines/customer-onboarding.yml fehlt.'
 }
 
+$brandingTest = Join-Path $repoRoot 'tests\Test-BSSEProjectBranding.ps1'
+if (Test-Path $brandingTest) {
+    Write-Ready 'Branding-Regressionstest tests/Test-BSSEProjectBranding.ps1 vorhanden.'
+}
+else {
+    Write-NotReady 'Branding-Regressionstest tests/Test-BSSEProjectBranding.ps1 fehlt.'
+}
+
 if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Ready 'Git verfügbar.'
 }
 else {
     Write-NotReady 'Git fehlt.'
+}
+
+if ($failures.Count -eq 0) {
+    Write-Host ''
+    Write-Host 'Project branding asset verification:' -ForegroundColor Cyan
+
+    try {
+        $brandingOutput = @(& $brandingTest *>&1)
+        $brandingOutput | ForEach-Object { Write-Host $_ }
+        Write-Ready 'Project-Branding-Mapping und freigegebene Asset-Hashes sind verifiziert.'
+    }
+    catch {
+        Write-NotReady "Project-Branding-Assetprüfung fehlgeschlagen: $($_.Exception.Message)"
+    }
 }
 
 if ($failures.Count -eq 0) {
@@ -76,7 +101,7 @@ if ($failures.Count -eq 0) {
             Write-NotReady 'Platform dependencies sind noch nicht vollständig eingerichtet; Dry Run enthält PLAN-Zustände.'
         }
         else {
-            Write-Ready 'Self-hosting Platform-Dependencies sind vollständig vorhanden.'
+            Write-Ready 'Self-hosting Platform-Dependencies einschließlich verwaltetem Core-Project-Branding sind vollständig vorhanden.'
         }
     }
     catch {
