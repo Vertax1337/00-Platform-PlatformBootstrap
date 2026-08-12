@@ -1,7 +1,7 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth  
-**Version:** 1.5
+**Version:** 1.5.1
 
 ## 1. Core
 
@@ -14,6 +14,9 @@
 └── SharedModules
 
 10-Automation
+├── AzureInfrastructureCollector
+└── 10-Automation-OPNsenseDocumentation
+
 20-IaC
 99-LAB
 ```
@@ -103,14 +106,14 @@ Es gibt bewusst kein zentrales Kundenbackup-Repo wie:
 10-Automation/OPNsenseBackup
 ```
 
-`10-Automation/OPNsenseDocumentation` enthält ausschließlich generischen Programmcode.
+`10-Automation/10-Automation-OPNsenseDocumentation` enthält ausschließlich generischen Programmcode.
 
 ### Datenfluss
 
 ```text
 CUST-xxx/Firewall-*
     ↓ RAW
-10-Automation/OPNsenseDocumentation
+10-Automation/10-Automation-OPNsenseDocumentation
     ↓ Sanitize
     ↓ Validate
     ↓ Normalize
@@ -164,3 +167,27 @@ Erneute Bootstrap-Läufe:
 - löschen keine bestehenden Repositories,
 - schreiben nichts in `Firewall-*`,
 - erstellen nur fehlende Soll-Repositories.
+
+## 9. Repositoryname OPNsenseDocumentation
+
+### Beschlossen
+
+Für das OPNsense-Dokumentationsrepository im Azure-DevOps-Projekt `10-Automation` gilt als Sollname:
+
+```text
+10-Automation-OPNsenseDocumentation
+```
+
+Hintergrund ist die eindeutige lokale Zuordnung zum Azure-DevOps-Projekt und eine saubere Clone-/Verzeichnisstruktur.
+
+### Keine globale Präfix-Konvention
+
+Aus dieser Einzelentscheidung wird **keine automatische globale Regel** für alle bestehenden Core-Repositories abgeleitet. Insbesondere werden `AzureInfrastructureCollector`, `PipelineTemplates`, `DocumentationEngine`, `SecurityValidation` usw. nicht durch diesen Change umbenannt.
+
+### Idempotenz / Legacy-Schutz
+
+- Der Sollzustand erkennt `10-Automation-OPNsenseDocumentation` exakt.
+- Ist das Soll-Repository vorhanden, erfolgt keine Änderung.
+- Legacy-Namen `OPNsenseDocumentation` / `OpenSenseDocumentation` werden nicht mehr provisioniert.
+- Falls ausschließlich ein Legacy-Name vorhanden ist, erzeugt der Bootstrap kein Duplikat und führt keine automatische Umbenennung durch; der Lauf wird vor `-Apply` zur manuellen Prüfung blockiert.
+- Bestehende Git-Inhalte und Historie werden nicht verändert.
