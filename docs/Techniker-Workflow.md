@@ -18,6 +18,26 @@ Das zugrunde liegende PowerShell-Skript bleibt identisch zur lokalen Entwicklung
 bootstrap/New-BSSECustomerProject.ps1
 ```
 
+## Verbindliche Architekturgrenze
+
+`Customer-Onboarding` ist **kein IaC-Deployment-Workflow**.
+
+Diese Pipeline behandelt ausschließlich:
+
+- Kundenprojekt / Kunden-Repositories,
+- `AzureDocumentation`,
+- `OPNsenseDocumentation`,
+- optionale OPNsense RAW-Backup-Repositories `Firewall-*`.
+
+Nicht Bestandteil dieses Workflows:
+
+```text
+AVD
+Vaultwarden
+```
+
+AVD und Vaultwarden sind IaC-Produkte unter `20-IaC`. Sie werden über separate Deployment-Workflows mit eigenen Deployment-Service-Connections, Plan/What-If, Approval, Deploy und Verify behandelt.
+
 ## Ausführungsmodi
 
 ### Local
@@ -50,7 +70,7 @@ Bevorzugter Zielzustand ist eine Azure DevOps Service Connection mit Microsoft E
 ```text
 Run pipeline
     ↓
-Kundendaten / Module / Firewalls eingeben
+Kundendaten / Dokumentationsmodule / Firewalls eingeben
     ↓
 Validate
     ↓
@@ -77,9 +97,9 @@ Der Post-Apply-Dry-Run schlägt fehl, wenn weiterhin ein `[PLAN]`, `[CREATE]`, `
 - TenantId (optional)
 - AzureDocumentation
 - OPNsenseDocumentation
-- AVD
-- Vaultwarden
 - Firewalls (optional, kommasepariert)
+
+AVD- oder Vaultwarden-Parameter sind in dieser Pipeline bewusst nicht vorhanden.
 
 ## Sicherheitsmodell
 
@@ -93,6 +113,13 @@ Zielname:
 sc-platform-bootstrap-azdo
 ```
 
+Diese Identität ist von späteren IaC-Deployment-Identitäten getrennt, z. B.:
+
+```text
+sc-cust<CustomerNumber>-avd-deploy
+sc-cust<CustomerNumber>-vaultwarden-deploy
+```
+
 ## Aktueller Implementierungsstatus
 
 ### Implementiert im Repository
@@ -104,6 +131,9 @@ sc-platform-bootstrap-azdo
 - System.AccessToken-Kompatibilitätsfallback
 - `pipelines/customer-onboarding.yml`
 - Validate → Dry Run → Approval → Apply → Verify
+- Pipeline-Parameter ausschließlich für Kunden-/Dokumentations-Onboarding
+- AVD/Vaultwarden aus Customer-Onboarding entfernt
+- `New-BSSECustomerProject.ps1` akzeptiert nur noch `AzureDocumentation` und `OPNsenseDocumentation`; IaC-Produkte werden explizit abgewiesen
 
 ### Noch in Azure DevOps einzurichten / zu verifizieren
 
@@ -117,7 +147,7 @@ sc-platform-bootstrap-azdo
 
 ### Noch funktional zu ergänzen
 
-`New-BSSECustomerProject.ps1 -Apply` erzeugt das CustomerConfiguration-Scaffold derzeit unter `generated-customers/<Projekt>` im lokalen Dateisystem des ausführenden Prozesses.
+`New-BSSECustomerProject.ps1 -Apply` erzeugt das CustomerConfiguration-Dokumentations-Scaffold derzeit unter `generated-customers/<Projekt>` im lokalen Dateisystem des ausführenden Prozesses.
 
 Bei lokaler Ausführung bleibt dieses Ergebnis auf dem Entwickler-Endpunkt erhalten. Bei einem Microsoft-hosted Pipeline-Agent ist dieser Arbeitsbereich jedoch nicht als dauerhafte Kundenkonfiguration zu betrachten.
 
@@ -125,4 +155,26 @@ Vor produktiver Nutzung des Technikerwegs muss deshalb noch ein kontrollierter P
 
 Die konkrete Push-/Merge-Strategie ist noch offen und wird nicht durch diesen Authentifizierungs-/Pipeline-Change vorweggenommen.
 
-Bis diese Punkte tatsächlich ausgeführt wurden, ist der Techniker-Pipelineweg als implementiert im Code, aber noch nicht produktiv verifiziert zu bewerten.
+## Separater IaC-Technikerweg
+
+Für AVD und Vaultwarden ist ein eigener Techniker-/Deployment-Workflow vorgesehen. Dieser ist **noch offen** und wird nicht in `customer-onboarding.yml` integriert.
+
+Zielprinzip:
+
+```text
+20-IaC Produkt
+    ↓
+Validate
+    ↓
+Lint / Security
+    ↓
+Plan / What-If
+    ↓
+Approval
+    ↓
+Deploy
+    ↓
+Verify
+```
+
+Bis die Azure-DevOps-seitigen Schritte tatsächlich ausgeführt wurden, ist der Customer-Onboarding-Pipelineweg als implementiert im Code, aber noch nicht produktiv verifiziert zu bewerten.
