@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.6
+
+- gemeinsame Authentifizierungslogik erkennt lokale Ausführung und Azure Pipelines automatisch
+- lokale Ausführung behält Azure-CLI-Kontextsuche, Tenant-Korrektur, interaktiven Login und lokalen Browser-Fallback
+- Pipeline-Ausführung deaktiviert interaktive Logins und Browser-Fallbacks vollständig
+- bevorzugte Pipeline-Authentifizierung über AzureCLI@3 mit Azure-DevOps-Service-Connection / Microsoft Entra Workload Identity Federation
+- optionaler nicht-interaktiver Kompatibilitätsfallback über `SYSTEM_ACCESSTOKEN` → `AZURE_DEVOPS_EXT_PAT`
+- Pipeline-Session liefert `ExecutionMode` und `AuthenticationMode` zur Diagnose
+- neue Techniker-Pipeline `/pipelines/customer-onboarding.yml`
+- Onboarding-Pipeline implementiert Validate → Dry Run → Manual Approval → Apply → Verify
+- Post-Apply-Verify führt erneut einen Dry Run aus und schlägt bei verbleibenden PLAN/CREATE/RENAME/BLOCKED-Zuständen fehl
+- neuer `docs/Techniker-Workflow.md`
+- Azure-DevOps-seitig bleiben Service Connection, minimale Berechtigungen, Pipeline-Registrierung und Runtime-Verifikation offen
+
 ## v1.5.2
 
 - Sollname des Azure-Collector-Repositories auf `10-Automation-AzureInfrastructureCollector` korrigiert
