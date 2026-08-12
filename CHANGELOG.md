@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.1
+
+- Architekturgrenze zwischen Dokumentationsplattform und IaC-Produkten korrigiert
+- `Customer-Onboarding` behandelt ausschließlich Kundenbasis, `AzureDocumentation`, `OPNsenseDocumentation` und optionale `Firewall-*` RAW-Repositories
+- AVD/Vaultwarden aus `pipelines/customer-onboarding.yml` entfernt
+- `New-BSSECustomerProject.ps1` akzeptiert nur noch `AzureDocumentation` und `OPNsenseDocumentation`
+- Übergabe von `AVD`, `AVD-Accelerator` oder `Vaultwarden` an `New-BSSECustomerProject.ps1` wird mit eindeutiger IaC-Abgrenzungsfehlermeldung abgewiesen
+- CustomerConfiguration-Scaffold erzeugt keine `infrastructure/avd`- oder `infrastructure/vaultwarden`-Bereiche mehr
+- bestehender `customer.yml`-Schlüssel `modules:` bleibt aus Kompatibilitätsgründen bestehen und enthält nur noch Dokumentationsmodule
+- IaC-Produkte bleiben unter `20-IaC` und erhalten einen separaten Techniker-/Deployment-Workflow
+- Dokumentation und Service-Connection-Namenskonventionen entsprechend präzisiert
+
 ## v1.6
 
 - gemeinsame Authentifizierungslogik erkennt lokale Ausführung und Azure Pipelines automatisch
