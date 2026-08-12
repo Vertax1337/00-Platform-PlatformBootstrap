@@ -1,4 +1,4 @@
-# BSSE Azure DevOps Platform – Bootstrap v1.7
+# BSSE Azure DevOps Platform – Bootstrap v1.8
 
 ## Zielmodell
 
@@ -33,8 +33,6 @@ Die interne Kunden-/Debitorennummer ist die stabile technische Kunden-ID.
 
 ## Verbindliche Architekturgrenze
 
-Die Plattform trennt **Dokumentation** und **IaC-Deployment** strikt.
-
 ### Dokumentationsplattform
 
 ```text
@@ -42,115 +40,90 @@ AzureDocumentation
 OPNsenseDocumentation
 ```
 
-Diese Fähigkeiten werden über das Kunden-/Dokumentations-Onboarding aktiviert und nutzen Read-only-/Sanitization-Prozesse.
-
 ### IaC-Produkte
 
 ```text
-AVD-Accelerator
-Vaultwarden
+20-IaC / AVD-Accelerator
+20-IaC / Vaultwarden
 ```
 
-Diese Produkte liegen unter `20-IaC` und werden **nicht** durch `New-BSSECustomerProject.ps1` oder `/pipelines/customer-onboarding.yml` deployed.
-
-IaC erhält einen separaten Deployment-Weg:
+AVD und Vaultwarden sind **keine** Customer-Onboarding-/Dokumentationsmodule. IaC verwendet einen separaten Deployment-Weg:
 
 ```text
-Validate
-  ↓
-Lint / Security
-  ↓
-Plan / What-If
-  ↓
-Approval
-  ↓
-Deploy
-  ↓
-Verify
+Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify
 ```
 
-## Wiederholte Läufe / Umfirmierung
+## v1.8 – Self-Hosting First Run
 
-Die Debitorennummer ist die primäre Kundenidentität. Der Bootstrap sucht zuerst nach:
+Eine neue Plattform besitzt zu Beginn noch keine zentrale Customer-Onboarding-Pipeline und keine dafür verwendbare WIF-Service-Connection. Deshalb ist nur die **Erstinitialisierung** lokal.
 
-```text
-CUST-<CustomerNumber>-*
-```
-
-Existiert genau ein solches Projekt, wird dieses wiederverwendet – selbst wenn sich der Firmenname später ändert.
-
-## OPNsense RAW Git Backup
-
-Ein Kunde kann **0 bis n OPNsense-Firewalls** besitzen.
-
-```text
-CUST-4711-Cannon-Deutschland-GmbH
-├── CustomerConfiguration
-├── Documentation
-├── Firewall-Cannon-Deutschland-GmbH-HQ
-└── Firewall-Cannon-Deutschland-GmbH-Branch01
-```
-
-Die `Firewall-*` Repositories sind `RAW / CONFIDENTIAL` Upstreams für OPNsense `os-git-backup` und werden vollständig leer erzeugt.
-
-## Repositorynamen unter `10-Automation`
-
-```text
-10-Automation-AzureInfrastructureCollector
-10-Automation-OPNsenseDocumentation
-```
-
-Lokale Zielstruktur:
-
-```text
-Repositorys/
-└── DEVOPS_Plattform/
-    └── 10-Automation/
-        ├── 10-Automation-AzureInfrastructureCollector/
-        └── 10-Automation-OPNsenseDocumentation/
-```
-
-Für Repositories anderer Projekte ist damit **keine globale Umbenennung auf `<Projekt>-<Repository>` beschlossen**.
-
-## v1.7 – vollständiger lokaler und zentraler Customer-Onboarding-Weg
-
-Beide Frontends verwenden dieselben fachlichen Backend-Bausteine:
-
-```text
-bootstrap/New-BSSECustomerProject.ps1
-bootstrap/Sync-BSSECustomerConfiguration.ps1
-```
-
-### Lokal
-
-Interaktiver Einstieg:
+Lokaler Einstieg:
 
 ```powershell
 pwsh.exe -ExecutionPolicy Bypass `
   -File ".\bootstrap\Start-BSSECustomerOnboarding.ps1"
 ```
 
-Ablauf:
+Vor der Kundenmaske erfolgt automatisch:
 
 ```text
-Eingaben
-  ↓
-Dry Run Customer Boundary
-  ↓
-Dry Run CustomerConfiguration
-  ↓
-Bestätigung nur bei Änderungen
-  ↓
-Apply
-  ↓
-Post-Apply Verify
+Dependency Dry Run
+    ↓
+Plattform vollständig?
+ ├─ Ja → Customer-Onboarding
+ └─ Nein
+      ↓
+PLATFORM INITIALIZATION REQUIRED
+      ↓
+separate lokale Freigabe
+      ↓
+Dependency Apply
+      ↓
+Dependency Verify
+      ↓
+Customer-Onboarding
 ```
 
-### Zentraler Technikerweg
+Verwendeter Dependency-Baustein:
 
 ```text
-00-Platform / Customer-Onboarding
-YAML: /pipelines/customer-onboarding.yml
+bootstrap/Initialize-BSSEPlatformDependencies.ps1
+```
+
+## Automatisch verwaltete Plattform-Dependencies
+
+```text
+Core-Projekte/-Repositories
+00-Platform/PlatformBootstrap Seed
+sp-bsse-platform-bootstrap-azdo
+Basic + 00-Platform/Readers
+Create new projects = Allow
+sc-platform-bootstrap-azdo (Workload Identity Federation)
+fic-sc-platform-bootstrap-azdo
+Customer-Onboarding Pipeline
+Pipeline-spezifische Service-Connection-Autorisierung
+```
+
+### Sicherheitsgrenzen
+
+- Azure-DevOps-Organisation selbst muss bereits existieren.
+- Der lokale Erstinstallations-Administrator muss die erforderlichen Entra-/Azure-DevOps-Rechte bereits besitzen.
+- Das Skript eskaliert den ausführenden Administrator nicht.
+- `Initialize-BSSEPlatformDependencies.ps1 -Apply` ist aus Azure Pipelines blockiert.
+- Die Plattformidentität wird nicht `Project Collection Administrator`.
+- `Create new projects` wird gezielt vergeben.
+- Die Service Connection wird nur für `Customer-Onboarding` autorisiert.
+- Ein dirty lokaler PlatformBootstrap-Working-Tree blockiert den Erst-Seed.
+- Abweichender Azure-`main` wird nicht überschrieben; kein Force-Push.
+- Der Azure-DevOps-WIF-Service-Endpoint-Typ wird aus den Laufzeit-Metadaten ermittelt; unbekannte Pflichtfelder führen zu Fail Closed.
+
+## Normaler Technikerweg nach Erstinitialisierung
+
+Der normale Techniker braucht keinen lokalen Clone mehr:
+
+```text
+Azure DevOps
+└── 00-Platform / Customer-Onboarding
 ```
 
 Parameter:
@@ -165,14 +138,12 @@ OPNsenseDocumentation
 Firewalls
 ```
 
-AVD und Vaultwarden sind bewusst **keine Parameter** dieser Pipeline.
-
-Stages:
+Pipeline:
 
 ```text
 Validate
   ↓
-DryRun
+DryRun Customer Boundary + CustomerConfiguration
   ↓
 Approval nur bei Änderungen
   ↓
@@ -192,84 +163,78 @@ Microsoft Entra Workload Identity Federation
 
 ## Persistente CustomerConfiguration
 
-`Sync-BSSECustomerConfiguration.ps1` vergleicht den erwarteten Dokumentations-Scaffold mit dem Kundenrepository.
+Beide Wege verwenden:
 
 ```text
-Datei fehlt     → PLAN / bei Apply hinzufügen
-Datei identisch → EXISTS / no change
-Datei abweichend→ BLOCKED
+bootstrap/Sync-BSSECustomerConfiguration.ps1
 ```
-
-Abweichende vorhandene Kundenkonfiguration wird nicht automatisch überschrieben.
-
-Der Git-Zugriff verwendet ein Azure-DevOps-OAuth-/Entra-Token, ohne es in die Remote-URL zu schreiben.
-
-## Pipeline einmalig registrieren
-
-Voraussetzungen und Least-Privilege-Setup:
 
 ```text
-docs/Customer-Onboarding-Setup.md
+Datei fehlt      → PLAN / ADD
+Datei identisch  → EXISTS
+Datei abweichend → BLOCKED
 ```
 
-Registrierungs-Dry-Run:
+Es gibt kein blindes Überschreiben bestehender Kundenkonfiguration.
 
-```powershell
-pwsh.exe -ExecutionPolicy Bypass `
-  -File ".\bootstrap\Register-BSSECustomerOnboardingPipeline.ps1"
+## OPNsense RAW Git Backup
+
+Ein Kunde kann 0..n Firewalls besitzen:
+
+```text
+CUST-4711-Cannon-Deutschland-GmbH
+├── CustomerConfiguration
+├── Documentation
+├── Firewall-Cannon-Deutschland-GmbH-HQ
+└── Firewall-Cannon-Deutschland-GmbH-Branch01
 ```
 
-Registrierung:
+`Firewall-*` ist RAW/CONFIDENTIAL und wird vollständig leer für `os-git-backup` erzeugt.
 
-```powershell
-pwsh.exe -ExecutionPolicy Bypass `
-  -File ".\bootstrap\Register-BSSECustomerOnboardingPipeline.ps1" `
-  -Apply
+## Repositorynamen unter `10-Automation`
+
+```text
+10-Automation-AzureInfrastructureCollector
+10-Automation-OPNsenseDocumentation
 ```
 
-Der erste Pipeline-Run wird bei der Registrierung bewusst nicht ausgelöst.
+Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konvention für andere Projekte.
 
 ## Readiness prüfen
-
-Vor dem ersten realen Onboarding-Test:
 
 ```powershell
 pwsh.exe -ExecutionPolicy Bypass `
   -File ".\bootstrap\Test-BSSECustomerOnboardingReadiness.ps1"
 ```
 
-Dieser Check prüft Voraussetzungen und verändert keine Kundenobjekte.
+Der Check verändert keine Plattform- oder Kundenobjekte und verwendet die Self-Hosting-Dependencies nur im Dry-Run-/Verify-Modus.
 
-## Aktueller Verifikationsstatus
+## Verifikationsstatus
 
 ### Code-seitig implementiert
 
+- Core-Bootstrap,
+- Self-Hosting-Dependency-Bootstrap,
 - lokales interaktives Frontend,
-- Azure-DevOps-Run-Pipeline,
+- zentrale Azure-DevOps-Pipeline,
 - automatische Local-/Pipeline-Erkennung,
+- secretless Entra-Identitäts-Sollzustand,
+- Azure-DevOps-Entitlement und Least-Privilege-ACL-Sollzustand,
+- dynamische WIF-Service-Endpoint-Type-Erkennung,
+- federated-credential-Sollzustand,
+- Pipeline-Registrierung und gezielte Endpoint-Autorisierung,
 - Dry Run / Approval / Apply / Verify,
-- persistente `CustomerConfiguration` mit Bestandsschutz,
-- WIF-/AzureCLI@3-Zielmodell,
-- idempotente Pipeline-Registrierung,
-- Readiness-Check,
+- persistente `CustomerConfiguration`,
 - harte Trennung zu AVD/Vaultwarden.
-
-### Vor dem ersten Test noch Azure-DevOps-seitig einzurichten
-
-- dedizierte Entra-Dienstidentität,
-- `sc-platform-bootstrap-azdo` mit Workload Identity Federation,
-- minimale Rechte gemäß `docs/Customer-Onboarding-Setup.md`,
-- aktueller Repository-Stand in `00-Platform/PlatformBootstrap`,
-- Registrierung der `Customer-Onboarding`-Pipeline.
 
 ### Noch nicht runtime-verifiziert
 
-Bis zum realen Test sind insbesondere WIF-Authentifizierung, reale Berechtigungen, Git-Push nach `CustomerConfiguration`, Stage-/Approval-Auswertung und Post-Apply-Idempotenz **nicht als tatsächlich verifiziert zu betrachten**.
+Bis zum ersten echten Plattform-First-Run sind insbesondere reale Entra-/Azure-DevOps-Objekterstellung, Endpoint-Type-Metadaten, WIF-Service-Connection, ACL-Zuweisung und der anschließende Pipeline-Lauf **nicht als tatsächlich verifiziert zu betrachten**.
 
 Details:
 
 ```text
-docs/Techniker-Workflow.md
 docs/Customer-Onboarding-Setup.md
+docs/Techniker-Workflow.md
 docs/Umsetzungsplan.md
 ```
