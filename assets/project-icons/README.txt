@@ -13,4 +13,4 @@ Wichtig:
 - Keine Unterordner anlegen.
 - Keine Umbenennung oder Neukomprimierung der freigegebenen Dateien.
 
-Dieser Ordner gehört zum Project-Branding-Stand auf dem Branch agent/project-branding.
+Dieser Ordner ist Bestandteil des PlatformBootstrap auf main.
