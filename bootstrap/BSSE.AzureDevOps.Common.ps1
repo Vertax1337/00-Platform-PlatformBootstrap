@@ -192,6 +192,39 @@ function Get-BSSECachedAzureAccounts {
     }
 }
 
+function Test-BSSEPipelineContext {
+    [CmdletBinding()]
+    param()
+
+    return (
+        $env:TF_BUILD -eq 'True' -or
+        -not [string]::IsNullOrWhiteSpace($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI) -or
+        -not [string]::IsNullOrWhiteSpace($env:AGENT_ID)
+    )
+}
+
+function Test-BSSEAzureDevOpsCliAccess {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$OrganizationUrl
+    )
+
+    $projectTest = Invoke-BSSEAz -Arguments @(
+        'devops','project','list',
+        '--org', $OrganizationUrl,
+        '--top','1',
+        '--output','json',
+        '--only-show-errors'
+    )
+
+    return [pscustomobject]@{
+        Success = ($projectTest.ExitCode -eq 0)
+        Phase   = 'AzureDevOps'
+        Error   = if ($projectTest.ExitCode -eq 0) { '' } else { $projectTest.Output }
+    }
+}
+
 function Test-BSSEAzureDevOpsAccess {
     [CmdletBinding()]
     param(
@@ -215,19 +248,7 @@ function Test-BSSEAzureDevOpsAccess {
         }
     }
 
-    $projectTest = Invoke-BSSEAz -Arguments @(
-        'devops','project','list',
-        '--org', $OrganizationUrl,
-        '--top','1',
-        '--output','json',
-        '--only-show-errors'
-    )
-
-    return [pscustomobject]@{
-        Success = ($projectTest.ExitCode -eq 0)
-        Phase   = 'AzureDevOps'
-        Error   = if ($projectTest.ExitCode -eq 0) { '' } else { $projectTest.Output }
-    }
+    return Test-BSSEAzureDevOpsCliAccess -OrganizationUrl $OrganizationUrl
 }
 
 function Set-BSSESubscriptionContext {
@@ -389,6 +410,79 @@ function Write-BSSEActiveAccount {
     Write-Host "     Subscription: $subName" -ForegroundColor DarkGray
 }
 
+function Initialize-BSSEPipelineAzureDevOpsSession {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$OrganizationUrl
+    )
+
+    Write-Host "[AUTO] Azure-Pipelines-Ausführung erkannt." -ForegroundColor DarkCyan
+    Write-Host "       Interaktive Anmeldung und Browser-Fallbacks sind in diesem Modus deaktiviert." -ForegroundColor DarkGray
+
+    # Preferred mode: AzureCLI@3 with an Azure DevOps service connection / Entra WIF.
+    # AzureCLI@3 establishes the CLI session before this script starts.
+    $directAccess = Test-BSSEAzureDevOpsCliAccess -OrganizationUrl $OrganizationUrl
+    if ($directAccess.Success) {
+        $account = Get-BSSEAzureAccount
+        Write-Host "[OK] Pipeline-Identität kann auf Azure DevOps zugreifen." -ForegroundColor Green
+        Write-Host "     Authentifizierung: Azure DevOps Service Connection / bestehende CLI-Session" -ForegroundColor DarkGray
+
+        return [pscustomobject]@{
+            OrganizationUrl    = $OrganizationUrl
+            Account            = $account
+            ExecutionMode      = 'Pipeline'
+            AuthenticationMode = 'PipelineServiceConnection'
+        }
+    }
+
+    # Compatibility fallback: YAML may explicitly map $(System.AccessToken) to SYSTEM_ACCESSTOKEN.
+    # az devops automatically consumes AZURE_DEVOPS_EXT_PAT for non-interactive authentication.
+    if (-not [string]::IsNullOrWhiteSpace($env:SYSTEM_ACCESSTOKEN)) {
+        Write-Host "[AUTO] Keine nutzbare Service-Connection-Session erkannt; System.AccessToken ist vorhanden." -ForegroundColor Cyan
+        Write-Host "[AUTO] Binde System.AccessToken prozesslokal an die Azure-DevOps-CLI." -ForegroundColor Cyan
+        $env:AZURE_DEVOPS_EXT_PAT = $env:SYSTEM_ACCESSTOKEN
+
+        $tokenAccess = Test-BSSEAzureDevOpsCliAccess -OrganizationUrl $OrganizationUrl
+        if ($tokenAccess.Success) {
+            Write-Host "[OK] Azure-DevOps-Zugriff über Pipeline System.AccessToken verifiziert." -ForegroundColor Green
+
+            return [pscustomobject]@{
+                OrganizationUrl    = $OrganizationUrl
+                Account            = $null
+                ExecutionMode      = 'Pipeline'
+                AuthenticationMode = 'PipelineSystemAccessToken'
+            }
+        }
+
+        throw @"
+Azure Pipeline wurde erkannt und System.AccessToken wurde automatisch eingebunden,
+der Zugriff auf Azure DevOps ist jedoch fehlgeschlagen.
+
+Organisation: $OrganizationUrl
+Fehler:       $($tokenAccess.Error)
+
+Prüfe die Berechtigungen der Build-Service-/Pipeline-Identität und den Job Authorization Scope.
+Der Bootstrap führt in einer Pipeline niemals einen interaktiven Login durch.
+"@
+    }
+
+    throw @"
+Azure Pipeline wurde erkannt, aber es steht keine funktionsfähige nicht-interaktive
+Azure-DevOps-Authentifizierung zur Verfügung.
+
+Bevorzugter Zielzustand:
+- AzureCLI@3
+- connectionType: azureDevOps
+- Azure DevOps Service Connection mit Microsoft Entra Workload Identity Federation
+
+Fallback:
+- $(System.AccessToken) im YAML explizit als SYSTEM_ACCESSTOKEN an den Skriptschritt mappen
+
+Der Bootstrap versucht in einer Pipeline absichtlich weder 'az login' noch einen Browser-Fallback.
+"@
+}
+
 function Initialize-BSSEAzureDevOpsSession {
     [CmdletBinding()]
     param(
@@ -415,6 +509,12 @@ function Initialize-BSSEAzureDevOpsSession {
         throw "Azure DevOps CLI konnte die Standardorganisation nicht konfigurieren: $($configure.Output)"
     }
 
+    if (Test-BSSEPipelineContext) {
+        return Initialize-BSSEPipelineAzureDevOpsSession -OrganizationUrl $org
+    }
+
+    Write-Host "[AUTO] Lokale Ausführung erkannt." -ForegroundColor DarkCyan
+
     $account = Get-BSSEAzureAccount
 
     if ($account) {
@@ -425,8 +525,10 @@ function Initialize-BSSEAzureDevOpsSession {
             Write-Host "[OK] Azure-DevOps-Zugriff verifiziert." -ForegroundColor Green
 
             return [pscustomobject]@{
-                OrganizationUrl = $org
-                Account = $account
+                OrganizationUrl    = $org
+                Account            = $account
+                ExecutionMode      = 'Local'
+                AuthenticationMode = 'LocalAzureCli'
             }
         }
     }
@@ -444,8 +546,10 @@ function Initialize-BSSEAzureDevOpsSession {
         Write-Host "[OK] Azure-DevOps-Zugriff verifiziert." -ForegroundColor Green
 
         return [pscustomobject]@{
-            OrganizationUrl = $org
-            Account = $cached.Account
+            OrganizationUrl    = $org
+            Account            = $cached.Account
+            ExecutionMode      = 'Local'
+            AuthenticationMode = 'LocalCachedAzureCli'
         }
     }
 
@@ -461,8 +565,10 @@ function Initialize-BSSEAzureDevOpsSession {
         Write-Host "[OK] Azure-DevOps-Zugriff verifiziert." -ForegroundColor Green
 
         return [pscustomobject]@{
-            OrganizationUrl = $org
-            Account = $cached.Account
+            OrganizationUrl    = $org
+            Account            = $cached.Account
+            ExecutionMode      = 'Local'
+            AuthenticationMode = 'LocalInteractiveAzureCli'
         }
     }
 
@@ -496,8 +602,10 @@ der Identität in der Azure-DevOps-Organisation.
     Write-Host "[OK] Azure-DevOps-Zugriff verifiziert." -ForegroundColor Green
 
     return [pscustomobject]@{
-        OrganizationUrl = $org
-        Account = $account
+        OrganizationUrl    = $org
+        Account            = $account
+        ExecutionMode      = 'Local'
+        AuthenticationMode = 'LocalBrowserBootstrap'
     }
 }
 
