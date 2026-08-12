@@ -43,3 +43,16 @@ sc-cust<CustomerNumber>-azure-reader
 sc-cust<CustomerNumber>-avd-deploy
 sc-cust<CustomerNumber>-vaultwarden-deploy
 ```
+
+## `10-Automation` Repositories
+
+Aktuell verifizierte Namen:
+
+```text
+AzureInfrastructureCollector
+10-Automation-OPNsenseDocumentation
+```
+
+Für `10-Automation-OPNsenseDocumentation` ist die Präfixierung mit dem Azure-DevOps-Projektnamen bewusst beschlossen. Daraus wird derzeit **keine globale `<Projektname>-<Repositoryname>`-Umbenennung** für alle vorhandenen Repositories abgeleitet.
+
+Der fachliche Modulparameter `OPNsenseDocumentation` ist davon getrennt und bleibt als Modulname bestehen.
