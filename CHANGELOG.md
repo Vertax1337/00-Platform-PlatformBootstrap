@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.9
+
+- zentrale Project-Branding-Komponente `bootstrap/BSSE.AzureDevOps.Branding.ps1`
+- verbindliches Avatar-Mapping für `00-Platform`, `10-Automation`, `20-IaC`, `99-LAB` und alle `CUST-*`
+- versionierte Branding-Assets unter `assets/project-icons/`
+- Core-Bootstrap bindet Project Branding für bestehende und neu erstellte Core-Projekte ein
+- Customer-Provisionierung bindet `cust-generic.png` automatisch für bestehende und neu erstellte `CUST-*`-Projekte ein
+- Avatar-Write über die offiziell dokumentierte Azure-DevOps-Core-API `Set Project Avatar` (`7.1-preview.1`)
+- bestehende Local-/Pipeline-Authentifizierung wird wiederverwendet; kein zusätzliches PAT/Client Secret
+- Asset-Validierung prüft Mapping, Existenz, PNG-Signatur und SHA-256
+- idempotenter Sollzustand über Project Property `BSSE.PlatformBootstrap.ProjectAvatarSha256`
+- Avatar wird nur bei fehlendem/abweichendem verwaltetem Hash-Marker neu gesetzt
+- Hash-Marker wird erst nach bestätigtem Avatar-API-HTTP-200 geschrieben und anschließend per Project-Properties-GET verifiziert
+- fehlende Assets, fehlende Project-ID, Berechtigungs-/REST-Fehler oder nicht verifizierbarer Marker führen Fail Closed zu `BLOCKED`/Fehler statt Warning-only
+- bekannte API-Grenze dokumentiert: manuelle Avatar-Drift außerhalb des Bootstraps ist bei unverändertem Marker mit der dokumentierten Core-API nicht zuverlässig lesbar
+- neuer Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert Mapping, Original-Dateigrößen und SHA-256 der fünf freigegebenen ZIP-Assets
+- neue Dokumentation `docs/Project-Branding.md`
+- README und Umsetzungsplan auf v1.9 fortgeschrieben
+- reale Azure-DevOps-Avatar-/Property-Runtime-Verifikation bleibt bis zum ersten echten Lauf ausdrücklich offen
+
 ## v1.8
 
 - neue Self-Hosting-/Dependency-Initialisierung `bootstrap/Initialize-BSSEPlatformDependencies.ps1`
