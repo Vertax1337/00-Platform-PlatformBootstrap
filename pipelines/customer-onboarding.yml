@@ -90,7 +90,8 @@ stages:
     - checkout: self
       clean: true
     - task: AzureCLI@3
-      displayName: Run customer bootstrap - DRY RUN
+      name: DryRunState
+      displayName: Run complete customer onboarding - DRY RUN
       inputs:
         connectionType: azureDevOps
         azureDevOpsServiceConnection: '$(azureDevOpsServiceConnection)'
@@ -126,12 +127,33 @@ stages:
             $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
           }
 
-          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments
+          Write-Host '=== DRY RUN: CUSTOMER BOUNDARY ==='
+          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments *>&1
+          $boundaryOutput | ForEach-Object { Write-Host $_ }
+
+          Write-Host '=== DRY RUN: CUSTOMERCONFIGURATION ==='
+          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1
+          $configOutput | ForEach-Object { Write-Host $_ }
+
+          $text = (($boundaryOutput + $configOutput) | Out-String)
+          if ($text -match '\[BLOCKED\]') {
+            throw 'Dry Run contains a BLOCKED state. Apply is not permitted.'
+          }
+
+          $hasChanges = ($text -match '\[PLAN\]')
+          Write-Host "##vso[task.setvariable variable=hasChanges;isOutput=true]$($hasChanges.ToString().ToLowerInvariant())"
+
+          if ($hasChanges) {
+            Write-Host '[PLAN] Changes require review and approval.'
+          }
+          else {
+            Write-Host '[OK] Desired state including CustomerConfiguration is already present. Approval/Apply will be skipped.'
+          }
 
 - stage: Approval
   displayName: Review dry run
   dependsOn: DryRun
-  condition: succeeded()
+  condition: and(succeeded(), eq(dependencies.DryRun.outputs['DryRun.DryRunState.hasChanges'], 'true'))
   jobs:
   - job: ManualReview
     displayName: Technician approval
@@ -144,7 +166,7 @@ stages:
         notifyUsers: ''
         instructions: |
           Review the complete Dry Run output.
-          Approve only if project, repositories, documentation capabilities and firewall repositories match the intended customer onboarding and no unexpected CREATE/RENAME operation is shown.
+          Approve only if project, repositories, documentation capabilities, CustomerConfiguration changes and firewall repositories match the intended customer onboarding and no unexpected operation is shown.
           This pipeline does not deploy AVD or Vaultwarden; IaC products are handled separately under 20-IaC.
         onTimeout: reject
 
@@ -154,12 +176,12 @@ stages:
   condition: succeeded()
   jobs:
   - job: Apply
-    displayName: Provision customer
+    displayName: Provision customer and persist configuration
     steps:
     - checkout: self
       clean: true
     - task: AzureCLI@3
-      displayName: Run customer bootstrap - APPLY
+      displayName: Run complete customer onboarding - APPLY
       inputs:
         connectionType: azureDevOps
         azureDevOpsServiceConnection: '$(azureDevOpsServiceConnection)'
@@ -176,8 +198,7 @@ stages:
           $arguments = @(
             '-OrganizationUrl', '$(System.CollectionUri)',
             '-CustomerNumber', '${{ parameters.customerNumber }}',
-            '-CustomerName', '${{ parameters.customerName }}',
-            '-Apply'
+            '-CustomerName', '${{ parameters.customerName }}'
           )
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
@@ -196,7 +217,11 @@ stages:
             $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
           }
 
-          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments
+          Write-Host '=== APPLY: CUSTOMER BOUNDARY ==='
+          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments -Apply
+
+          Write-Host '=== APPLY: CUSTOMERCONFIGURATION ==='
+          & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @arguments -Apply
 
 - stage: Verify
   displayName: Verify idempotency
@@ -204,7 +229,7 @@ stages:
   condition: succeeded()
   jobs:
   - job: Verify
-    displayName: Re-run dry run and verify no changes
+    displayName: Re-run complete dry run and verify no changes
     steps:
     - checkout: self
       clean: true
@@ -245,12 +270,17 @@ stages:
             $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
           }
 
-          $output = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments *>&1
-          $output | ForEach-Object { Write-Host $_ }
-          $text = ($output | Out-String)
+          Write-Host '=== VERIFY: CUSTOMER BOUNDARY ==='
+          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments *>&1
+          $boundaryOutput | ForEach-Object { Write-Host $_ }
 
+          Write-Host '=== VERIFY: CUSTOMERCONFIGURATION ==='
+          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1
+          $configOutput | ForEach-Object { Write-Host $_ }
+
+          $text = (($boundaryOutput + $configOutput) | Out-String)
           if ($text -match '\[(PLAN|CREATE|RENAME|BLOCKED)\]') {
             throw 'Post-Apply verification found a pending or blocked change. Desired state is not idempotent.'
           }
 
-          Write-Host '[OK] Post-Apply dry run contains no pending provisioning change.'
+          Write-Host '[OK] Customer boundary and persistent CustomerConfiguration are idempotent.'
