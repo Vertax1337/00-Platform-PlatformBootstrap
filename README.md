@@ -1,4 +1,4 @@
-# BSSE Azure DevOps Platform – Bootstrap v1.6
+# BSSE Azure DevOps Platform – Bootstrap v1.6.1
 
 ## Zielmodell
 
@@ -17,6 +17,10 @@ BSSE-CloudOps
 │   └── 10-Automation-OPNsenseDocumentation
 │
 ├── 20-IaC
+│   ├── Vaultwarden
+│   ├── AVD-Accelerator
+│   └── Shared-IaC-Modules
+│
 ├── 99-LAB
 │
 └── CUST-<interne Kunden-/Debitorennummer>-<Kundenname>
@@ -26,6 +30,44 @@ BSSE-CloudOps
 ```
 
 Die interne Kunden-/Debitorennummer ist die stabile technische Kunden-ID.
+
+## Verbindliche Architekturgrenze
+
+Die Plattform trennt **Dokumentation** und **IaC-Deployment** strikt.
+
+### Dokumentationsplattform
+
+```text
+AzureDocumentation
+OPNsenseDocumentation
+```
+
+Diese Fähigkeiten werden über das Kunden-/Dokumentations-Onboarding aktiviert und nutzen Read-only-/Sanitization-Prozesse.
+
+### IaC-Produkte
+
+```text
+AVD-Accelerator
+Vaultwarden
+```
+
+Diese Produkte liegen unter `20-IaC` und werden **nicht** durch `New-BSSECustomerProject.ps1` oder `/pipelines/customer-onboarding.yml` deployed.
+
+IaC erhält einen separaten Deployment-Weg:
+
+```text
+Validate
+  ↓
+Lint / Security
+  ↓
+Plan / What-If
+  ↓
+Approval
+  ↓
+Deploy
+  ↓
+Verify
+```
 
 ## Wiederholte Läufe / Umfirmierung
 
@@ -49,7 +91,7 @@ CUST-4711-Cannon-Deutschland-GmbH
 └── Firewall-Cannon-Deutschland-GmbH-Branch01
 ```
 
-Die `Firewall-*` Repositories sind absichtlich **keine normalen Entwicklungs-Repositories**, sondern `RAW / CONFIDENTIAL` Upstreams für OPNsense `os-git-backup`.
+Die `Firewall-*` Repositories sind `RAW / CONFIDENTIAL` Upstreams für OPNsense `os-git-backup`.
 
 Der Bootstrap erstellt diese Repositories vollständig leer:
 
@@ -60,9 +102,7 @@ Der Bootstrap erstellt diese Repositories vollständig leer:
 - kein Scaffold
 - keine Sanitized Config
 
-Dadurch kann OPNsense `os-git-backup` das Remote-Repository selbst übernehmen.
-
-## Neues Kundenprojekt mit Firewalls
+## Lokaler Entwicklungsweg
 
 Dry Run:
 
@@ -79,71 +119,29 @@ pwsh.exe -ExecutionPolicy Bypass `
 
 Apply mit demselben Aufruf plus `-Apply`.
 
-## Firewall später hinzufügen
+Die erlaubten `-Modules` sind ausschließlich:
 
-```powershell
-pwsh.exe -ExecutionPolicy Bypass `
-  -File ".\bootstrap\Add-BSSECustomerFirewall.ps1" `
-  -OrganizationUrl "https://dev.azure.com/BSSE-CloudOps/" `
-  -CustomerNumber "4711" `
-  -Firewalls "Branch02"
+```text
+AzureDocumentation
+OPNsenseDocumentation
 ```
+
+Ein Aufruf mit `AVD`, `AVD-Accelerator` oder `Vaultwarden` wird bewusst abgewiesen, weil dies IaC-Produkte sind.
 
 ## Verantwortlichkeiten
 
 ```text
-CUST-xxx / Firewall-*                         = RAW Backup + Git History
-10-Automation / 10-Automation-OPNsenseDocumentation = Sanitizer + Validator + Parser/Normalizer
-10-Automation / 10-Automation-AzureInfrastructureCollector = Azure Read-only Collector
-00-Platform / DocumentationEngine             = finale Dokumenterzeugung
-CUST-xxx / Documentation                      = freigegebene Kundendokumentation
+CUST-xxx / Firewall-*                                  = RAW Backup + Git History
+10-Automation / 10-Automation-OPNsenseDocumentation  = Sanitizer + Validator + Parser/Normalizer
+10-Automation / 10-Automation-AzureInfrastructureCollector
+                                                       = Azure Read-only Collector
+00-Platform / DocumentationEngine                     = finale Dokumenterzeugung
+CUST-xxx / Documentation                              = freigegebene Kundendokumentation
+20-IaC / AVD-Accelerator                              = AVD IaC Produkt
+20-IaC / Vaultwarden                                  = Vaultwarden IaC Produkt
 ```
-
-## Sicherheitsgrenze
-
-```text
-Firewall-* RAW repo
-      ↓
-Sanitize
-      ↓
-Validate
-      ↓
-Secret Check
-      ↓
-------------- SECURITY BOUNDARY -------------
-      ↓
-sanitized / normalized data
-      ↓
-DocumentationEngine / KI
-```
-
-RAW-Konfigurationen dürfen niemals in `10-Automation`, `Documentation`, normale Pipeline-Artefakte oder öffentliche/allgemeine Entwicklungs-Repositories kopiert werden.
-
-## Robuste Listenparameter
-
-Der Bootstrap akzeptiert Komma-/Semikolon-Listen, auch bei `pwsh.exe -File`:
-
-```powershell
--Modules AzureDocumentation,OPNsenseDocumentation
--Firewalls "HQ,Branch01,Branch02"
-```
-
-## PlatformBootstrap Repository
-
-```text
-00-Platform
-├── PlatformBootstrap
-├── PipelineTemplates
-├── DocumentationEngine
-├── SecurityValidation
-└── SharedModules
-```
-
-`PlatformBootstrap` ist die Source of Truth für Aufbau und Weiterentwicklung der Azure-DevOps-Plattform. Bei bestehenden Umgebungen werden vorhandene Repositories und Inhalte nicht überschrieben.
 
 ## Repositorynamen unter `10-Automation`
-
-Für die aktuell bestehenden Automations-Repositories gilt:
 
 ```text
 10-Automation-AzureInfrastructureCollector
@@ -160,24 +158,11 @@ Repositorys/
         └── 10-Automation-OPNsenseDocumentation/
 ```
 
-Die fachlichen Komponentenbezeichnungen bleiben `AzureInfrastructureCollector` bzw. `OPNsenseDocumentation` und sind von den Repositorynamen getrennt.
-
 Für Repositories anderer Projekte ist damit **keine globale Umbenennung auf `<Projekt>-<Repository>` beschlossen**.
-
-### Bestandsschutz / Idempotenz
-
-Sind die Soll-Repositories vorhanden, zeigt der Dry Run:
-
-```text
-[EXISTS] Repo 10-Automation-AzureInfrastructureCollector (no change)
-[EXISTS] Repo 10-Automation-OPNsenseDocumentation (no change)
-```
-
-Existiert ausschließlich ein Legacy-Repository `AzureInfrastructureCollector`, `OPNsenseDocumentation` oder `OpenSenseDocumentation`, wird **kein zweites Repository automatisch erzeugt**. Der Bootstrap blockiert die automatische Änderung und verlangt eine bewusste manuelle Prüfung/Umbenennung.
 
 ## v1.6 – lokaler Entwicklungsweg und zentraler Technikerweg
 
-Das gleiche PowerShell-Bootstrap wird jetzt in zwei Laufzeitmodi unterstützt:
+Das gleiche PowerShell-Bootstrap wird in zwei Laufzeitmodi unterstützt:
 
 ```text
 LOCAL
@@ -201,13 +186,25 @@ Service Connection: sc-platform-bootstrap-azdo
 Microsoft Entra Workload Identity Federation
 ```
 
-Als Kompatibilitätsfallback kann ein explizit gemapptes `SYSTEM_ACCESSTOKEN` nicht-interaktiv an die Azure-DevOps-CLI gebunden werden. In einer Pipeline werden niemals `az login` oder Browser-Fallbacks gestartet.
-
 ### Techniker-Pipeline
 
 ```text
 /pipelines/customer-onboarding.yml
 ```
+
+Diese Pipeline behandelt ausschließlich Kundenbasis und Dokumentationsfähigkeiten:
+
+```text
+CustomerNumber
+CustomerName
+CustomerSlug
+TenantId
+AzureDocumentation
+OPNsenseDocumentation
+Firewalls
+```
+
+AVD und Vaultwarden sind bewusst **keine Parameter** dieser Pipeline.
 
 Ablauf:
 
@@ -223,9 +220,7 @@ Apply
 Verify (erneuter Dry Run / Idempotenz)
 ```
 
-Der Post-Apply-Verify schlägt fehl, wenn weiterhin `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` erkannt wird.
-
-### Noch nicht produktiv verifiziert
+## Noch nicht produktiv verifiziert
 
 Code und YAML sind im Repository implementiert. Azure-DevOps-seitig müssen noch eingerichtet und tatsächlich getestet werden:
 
@@ -234,5 +229,8 @@ Code und YAML sind im Repository implementiert. Azure-DevOps-seitig müssen noch
 - minimale erforderliche Azure-DevOps-Berechtigungen
 - Pipeline-Registrierung aus `/pipelines/customer-onboarding.yml`
 - erster echter Dry Run / Apply / Verify
+- kontrollierte Persistierung des generierten CustomerConfiguration-Scaffolds
+
+Der separate zentrale Techniker-/Deployment-Weg für die IaC-Produkte AVD und Vaultwarden ist noch offen und wird in den jeweiligen IaC-Umsetzungsplänen umgesetzt.
 
 Details: `docs/Techniker-Workflow.md` und `docs/Umsetzungsplan.md`.
