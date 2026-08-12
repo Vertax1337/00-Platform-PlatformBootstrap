@@ -2,9 +2,9 @@
 
 ## Ziel
 
-Der produktive Kunden-Onboarding-Prozess soll ohne lokalen Download des Bootstrap-Repositories funktionieren.
+Der produktive Kunden-Onboarding-Prozess funktioniert ohne lokalen Download des Bootstrap-Repositories.
 
-Der Techniker startet das Onboarding zentral in Azure DevOps über die Pipeline:
+Der Techniker startet zentral in Azure DevOps:
 
 ```text
 00-Platform
@@ -12,30 +12,30 @@ Der Techniker startet das Onboarding zentral in Azure DevOps über die Pipeline:
     └── YAML: /pipelines/customer-onboarding.yml
 ```
 
-Das zugrunde liegende PowerShell-Backend bleibt identisch zur lokalen Entwicklungs- und Fehleranalyse:
-
-```text
-bootstrap/New-BSSECustomerProject.ps1
-```
-
-Für die lokale Entwicklungs-/Testausführung existiert zusätzlich ein interaktives Frontend:
+Für Entwicklung und Regressionstests existiert parallel ein lokales interaktives Frontend:
 
 ```text
 bootstrap/Start-BSSECustomerOnboarding.ps1
 ```
 
-Dieses Frontend sammelt dieselben fachlichen Eingaben wie die Azure-DevOps-Pipeline und ruft anschließend dasselbe Backend auf.
+Beide Wege verwenden dieselben fachlichen Backend-Bausteine:
+
+```text
+bootstrap/New-BSSECustomerProject.ps1
+bootstrap/Sync-BSSECustomerConfiguration.ps1
+```
 
 ## Verbindliche Architekturgrenze
 
 `Customer-Onboarding` ist **kein IaC-Deployment-Workflow**.
 
-Diese Pipeline behandelt ausschließlich:
+Dieser Workflow behandelt ausschließlich:
 
 - Kundenprojekt / Kunden-Repositories,
 - `AzureDocumentation`,
 - `OPNsenseDocumentation`,
-- optionale OPNsense RAW-Backup-Repositories `Firewall-*`.
+- optionale OPNsense RAW-Backup-Repositories `Firewall-*`,
+- persistente Initialisierung von `CustomerConfiguration`.
 
 Nicht Bestandteil dieses Workflows:
 
@@ -44,13 +44,41 @@ AVD
 Vaultwarden
 ```
 
-AVD und Vaultwarden sind IaC-Produkte unter `20-IaC`. Sie werden über separate Deployment-Workflows mit eigenen Deployment-Service-Connections, Plan/What-If, Approval, Deploy und Verify behandelt.
+AVD und Vaultwarden sind IaC-Produkte unter `20-IaC` und erhalten eigene Deployment-Workflows mit eigenen Deployment-Service-Connections, Plan/What-If, Approval, Deploy und Verify.
 
-## Ausführungsmodi
+## Gemeinsame Ablaufsemantik
 
-### Local
+Lokal und Pipeline verwenden dieselbe fachliche Reihenfolge:
 
-Für Entwicklung, Debugging und Bootstrap-Weiterentwicklung wird bevorzugt das interaktive Frontend gestartet:
+```text
+Eingaben
+    ↓
+Validate
+    ↓
+Dry Run Customer Boundary
+    ↓
+Dry Run CustomerConfiguration
+    ↓
+keine Änderungen? → erfolgreich beenden
+    ↓
+Änderungen vorhanden
+    ↓
+Freigabe
+    ↓
+Apply Customer Boundary
+    ↓
+Apply CustomerConfiguration
+    ↓
+Post-Apply Dry Run beider Bereiche
+    ↓
+Idempotenz-Verifikation
+```
+
+`[BLOCKED]` verhindert ein Apply. Abweichende vorhandene Bootstrap-Zieldateien in `CustomerConfiguration` werden nicht automatisch überschrieben.
+
+## Local
+
+Start:
 
 ```powershell
 pwsh.exe -ExecutionPolicy Bypass `
@@ -67,25 +95,7 @@ Das Frontend fragt ab:
 - OPNsenseDocumentation
 - Firewalls (optional, kommasepariert)
 
-Der lokale Ablauf entspricht der Pipeline-Semantik:
-
-```text
-Eingaben
-    ↓
-Dry Run
-    ↓
-Dry-Run-Ausgabe prüfen
-    ↓
-lokale Bestätigung
-    ↓
-Apply
-    ↓
-Post-Apply Dry Run
-    ↓
-Idempotenz-Verifikation
-```
-
-Enthält der Dry Run `[BLOCKED]`, wird Apply lokal nicht angeboten. Enthält der Dry Run keinen `[PLAN]`-Zustand, wird kein Apply benötigt.
+Nach dem Dry Run erfolgt eine lokale Ja/Nein-Freigabe. Ist kein `[PLAN]` vorhanden, wird kein Apply angeboten.
 
 Die gemeinsame Authentifizierungslogik erkennt die lokale Ausführung automatisch und verwendet:
 
@@ -94,47 +104,24 @@ Die gemeinsame Authentifizierungslogik erkennt die lokale Ausführung automatisc
 3. falls erforderlich gezielten interaktiven Login,
 4. lokalen Browser-Fallback nur für die Erstinitialisierung.
 
-Das Backend kann weiterhin direkt mit CLI-Parametern aufgerufen werden. Das ist vor allem für Debugging, Automatisierung und gezielte Regressionstests vorgesehen.
+Das Backend kann für Debugging weiterhin direkt per CLI-Parameter aufgerufen werden.
 
-### Pipeline
+## Pipeline
 
-In Azure Pipelines wird die Pipeline-Umgebung automatisch erkannt.
+Azure Pipelines wird automatisch erkannt. Interaktive Anmeldung und Browser-Fallback sind dort deaktiviert.
 
-Interaktive Anmeldung und Browser-Fallback sind dort grundsätzlich deaktiviert.
-
-Priorität der Pipeline-Authentifizierung:
-
-1. bereits hergestellte Azure-DevOps-Service-Connection-/AzureCLI@3-Session,
-2. optionaler Kompatibilitätsfallback über `SYSTEM_ACCESSTOKEN`, sofern dieser explizit in den Skriptprozess gemappt wurde,
-3. andernfalls Fail Closed mit eindeutiger Fehlermeldung.
-
-Bevorzugter Zielzustand ist eine Azure DevOps Service Connection mit Microsoft Entra Workload Identity Federation und `AzureCLI@3` mit `connectionType: azureDevOps`.
-
-## Techniker-Ablauf
+Bevorzugte Authentifizierung:
 
 ```text
-Run pipeline
-    ↓
-Kundendaten / Dokumentationsmodule / Firewalls eingeben
-    ↓
-Validate
-    ↓
-Dry Run
-    ↓
-Dry-Run-Ausgabe prüfen
-    ↓
-Manual Approval
-    ↓
-Apply
-    ↓
-Post-Apply Dry Run
-    ↓
-Idempotenz-Verifikation
+AzureCLI@3
+connectionType: azureDevOps
+Service Connection: sc-platform-bootstrap-azdo
+Microsoft Entra Workload Identity Federation
 ```
 
-Der Post-Apply-Dry-Run schlägt fehl, wenn weiterhin ein `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` Zustand erkannt wird.
+Fallback ist nur ein explizit gemapptes `SYSTEM_ACCESSTOKEN`; andernfalls Fail Closed.
 
-## Pipeline-Parameter
+Pipeline-Parameter:
 
 - CustomerNumber
 - CustomerName
@@ -144,13 +131,70 @@ Der Post-Apply-Dry-Run schlägt fehl, wenn weiterhin ein `[PLAN]`, `[CREATE]`, `
 - OPNsenseDocumentation
 - Firewalls (optional, kommasepariert)
 
-AVD- oder Vaultwarden-Parameter sind in dieser Pipeline bewusst nicht vorhanden.
+AVD- oder Vaultwarden-Parameter existieren bewusst nicht.
 
-## Sicherheitsmodell
+### Stages
 
-Die Pipeline darf nicht mit einer globalen, unbeschränkten Owner-/Contributor-Identität betrieben werden.
+```text
+Validate
+DryRun
+Approval
+Apply
+Verify
+```
 
-Die für PlatformBootstrap verwendete Azure-DevOps-Service-Connection erhält ausschließlich die für die Provisionierungsaufgaben erforderlichen Azure-DevOps-Berechtigungen.
+`DryRun` setzt eine Output-Variable `hasChanges`. Wenn weder Kundenboundary noch `CustomerConfiguration` einen `[PLAN]`-Zustand melden, werden Approval und Apply übersprungen.
+
+`Verify` führt nach Apply beide Dry Runs erneut aus und schlägt fehl, wenn `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` verbleibt.
+
+## Persistente CustomerConfiguration
+
+`Sync-BSSECustomerConfiguration.ps1` macht die generierte Kundenkonfiguration zum kontrollierten Git-Zielzustand.
+
+Verhalten:
+
+```text
+Datei fehlt
+→ PLAN / bei Apply hinzufügen
+
+Datei identisch
+→ EXISTS / no change
+
+Datei existiert abweichend
+→ BLOCKED
+→ kein automatisches Überschreiben
+```
+
+Der Push erfolgt erst nach erfolgreichem Vergleich. Das Azure-DevOps-OAuth-/Entra-Token wird nur prozesslokal für Git verwendet und nicht in die Remote-URL geschrieben.
+
+Dadurch ist `CustomerConfiguration` bei einem Microsoft-hosted Agent nicht mehr nur ein flüchtiges Arbeitsverzeichnis.
+
+## Pipeline-Registrierung
+
+Die Pipeline wird idempotent mit folgendem Plattformskript registriert:
+
+```text
+bootstrap/Register-BSSECustomerOnboardingPipeline.ps1
+```
+
+Dry Run:
+
+```powershell
+pwsh.exe -ExecutionPolicy Bypass `
+  -File ".\bootstrap\Register-BSSECustomerOnboardingPipeline.ps1"
+```
+
+Apply:
+
+```powershell
+pwsh.exe -ExecutionPolicy Bypass `
+  -File ".\bootstrap\Register-BSSECustomerOnboardingPipeline.ps1" `
+  -Apply
+```
+
+Der erste Pipeline-Lauf wird bei der Registrierung bewusst übersprungen.
+
+## Sicherheitsmodell der Plattformidentität
 
 Zielname:
 
@@ -158,56 +202,70 @@ Zielname:
 sc-platform-bootstrap-azdo
 ```
 
-Diese Identität ist von späteren IaC-Deployment-Identitäten getrennt, z. B.:
+Die dahinterliegende Entra-Dienstidentität wird nicht pauschal `Project Collection Administrator`.
 
-```text
-sc-cust<CustomerNumber>-avd-deploy
-sc-cust<CustomerNumber>-vaultwarden-deploy
+Zielberechtigungen:
+
+- Basic-Zugriff in Azure DevOps,
+- Projektzugriff auf `00-Platform`,
+- Collection-Berechtigung `Create new projects = Allow`,
+- anschließend projektlokale Rechte im jeweils neu erzeugten `CUST-*` über die Projekt-Erstellerrolle.
+
+Die Service Connection wird nur für die vorgesehene Customer-Onboarding-Pipeline autorisiert.
+
+Details zur einmaligen Einrichtung: `docs/Customer-Onboarding-Setup.md`.
+
+## Readiness-Check
+
+Vor dem ersten echten Test kann ohne Kundenprovisionierung geprüft werden:
+
+```powershell
+pwsh.exe -ExecutionPolicy Bypass `
+  -File ".\bootstrap\Test-BSSECustomerOnboardingReadiness.ps1"
 ```
 
-## Aktueller Implementierungsstatus
+Der Check prüft u. a. Git, Azure-DevOps-Zugriff, `00-Platform/PlatformBootstrap`, Service Connection, registrierte Pipeline und die lokalen Workflow-Dateien.
 
-### Implementiert im Repository
+Er verändert keine Azure-DevOps-Kundenobjekte und ersetzt **keine** Runtime-Verifikation.
 
-- automatische Local-/Pipeline-Erkennung in `BSSE.AzureDevOps.Common.ps1`
-- lokale Authentifizierung bleibt kompatibel
-- lokales interaktives Frontend `Start-BSSECustomerOnboarding.ps1`
-- lokale Parameterabfrage entspricht fachlich der Pipeline-Maske
-- lokaler Ablauf Dry Run → Bestätigung → Apply → Verify
-- Pipeline-Modus ohne interaktive Logins
-- AzureCLI@3-/Service-Connection-Erkennung
-- System.AccessToken-Kompatibilitätsfallback
-- `pipelines/customer-onboarding.yml`
-- Validate → Dry Run → Approval → Apply → Verify
-- Pipeline-Parameter ausschließlich für Kunden-/Dokumentations-Onboarding
-- AVD/Vaultwarden aus Customer-Onboarding entfernt
-- `New-BSSECustomerProject.ps1` akzeptiert nur noch `AzureDocumentation` und `OPNsenseDocumentation`; IaC-Produkte werden explizit abgewiesen
+## Implementierungsstatus
 
-### Noch in Azure DevOps einzurichten / zu verifizieren
+### Im Repository implementiert und code-seitig verifiziert
 
-- Azure DevOps Service Connection `sc-platform-bootstrap-azdo`
-- Microsoft Entra Workload Identity Federation für diese Verbindung
-- minimale Azure-DevOps-Berechtigungen der Service-Connection-Identität
-- Registrierung der Pipeline aus `/pipelines/customer-onboarding.yml`
-- echter Pipeline-Dry-Run
-- echter Apply-Test gegen eine dafür vorgesehene Test-Provisionierung
-- Verifikation des Post-Apply-Idempotenzchecks
+- automatische Local-/Pipeline-Erkennung
+- lokales interaktives Frontend
+- identische fachliche Parameter auf beiden Wegen
+- Customer Boundary Dry Run / Apply
+- persistente `CustomerConfiguration` mit Bestandsschutz
+- lokaler Dry Run → Freigabe → Apply → Verify
+- Pipeline Validate → DryRun → Approval → Apply → Verify
+- Approval/Apply nur bei tatsächlich geplanten Änderungen
+- AzureCLI@3-/WIF-Zielmodell
+- Pipeline-Registrierungsskript
+- Readiness-Check
+- harte Trennung von AVD/Vaultwarden
 
-### Noch funktional zu ergänzen
+### Noch Azure-DevOps-seitig einzurichten
 
-`New-BSSECustomerProject.ps1 -Apply` erzeugt das CustomerConfiguration-Dokumentations-Scaffold derzeit unter `generated-customers/<Projekt>` im lokalen Dateisystem des ausführenden Prozesses.
+- dedizierte Entra-Dienstidentität für PlatformBootstrap,
+- `sc-platform-bootstrap-azdo` mit Workload Identity Federation,
+- minimale Berechtigungen gemäß `docs/Customer-Onboarding-Setup.md`,
+- aktueller `PlatformBootstrap`-Stand in `00-Platform/PlatformBootstrap`,
+- Pipeline mit dem Registrierungsskript registrieren.
 
-Bei lokaler Ausführung bleibt dieses Ergebnis auf dem Entwickler-Endpunkt erhalten. Bei einem Microsoft-hosted Pipeline-Agent ist dieser Arbeitsbereich jedoch nicht als dauerhafte Kundenkonfiguration zu betrachten.
+### Noch nicht runtime-verifiziert
 
-Vor produktiver Nutzung des Technikerwegs muss deshalb noch ein kontrollierter Persistierungsweg umgesetzt werden. Ziel ist, den generierten und validierten Scaffold sicher in das jeweilige Kunden-Repository `CustomerConfiguration` zu überführen, ohne bestehende Inhalte oder Git-Historie unkontrolliert zu überschreiben.
+Bis zum geplanten gemeinsamen Test dürfen folgende Punkte nicht als bestätigt gelten:
 
-Die konkrete Push-/Merge-Strategie ist noch offen und wird nicht durch diesen Authentifizierungs-/Pipeline-Change vorweggenommen.
+- reale WIF-Authentifizierung der Service Connection,
+- tatsächliche Berechtigungen der Pipeline-Identität,
+- realer Git-Push nach `CustomerConfiguration`,
+- reale Stage-/Approval-/Output-Variable-Auswertung,
+- realer Apply-/Post-Apply-Idempotenzlauf.
 
 ## Separater IaC-Technikerweg
 
-Für AVD und Vaultwarden ist ein eigener Techniker-/Deployment-Workflow vorgesehen. Dieser ist **noch offen** und wird nicht in `customer-onboarding.yml` integriert.
-
-Zielprinzip:
+Für AVD und Vaultwarden bleibt ein eigener Techniker-/Deployment-Workflow vorgesehen und **noch offen**:
 
 ```text
 20-IaC Produkt
@@ -224,5 +282,3 @@ Deploy
     ↓
 Verify
 ```
-
-Bis die Azure-DevOps-seitigen Schritte tatsächlich ausgeführt wurden, ist der Customer-Onboarding-Pipelineweg als implementiert im Code, aber noch nicht produktiv verifiziert zu bewerten.
