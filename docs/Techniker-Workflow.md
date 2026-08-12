@@ -12,11 +12,19 @@ Der Techniker startet das Onboarding zentral in Azure DevOps über die Pipeline:
     └── YAML: /pipelines/customer-onboarding.yml
 ```
 
-Das zugrunde liegende PowerShell-Skript bleibt identisch zur lokalen Entwicklungs- und Fehleranalyse:
+Das zugrunde liegende PowerShell-Backend bleibt identisch zur lokalen Entwicklungs- und Fehleranalyse:
 
 ```text
 bootstrap/New-BSSECustomerProject.ps1
 ```
+
+Für die lokale Entwicklungs-/Testausführung existiert zusätzlich ein interaktives Frontend:
+
+```text
+bootstrap/Start-BSSECustomerOnboarding.ps1
+```
+
+Dieses Frontend sammelt dieselben fachlichen Eingaben wie die Azure-DevOps-Pipeline und ruft anschließend dasselbe Backend auf.
 
 ## Verbindliche Architekturgrenze
 
@@ -42,14 +50,51 @@ AVD und Vaultwarden sind IaC-Produkte unter `20-IaC`. Sie werden über separate 
 
 ### Local
 
-Für Entwicklung, Debugging und Bootstrap-Weiterentwicklung kann das Skript weiterhin lokal gestartet werden.
+Für Entwicklung, Debugging und Bootstrap-Weiterentwicklung wird bevorzugt das interaktive Frontend gestartet:
 
-Die gemeinsame Authentifizierungslogik erkennt eine lokale Ausführung automatisch und verwendet:
+```powershell
+pwsh.exe -ExecutionPolicy Bypass `
+  -File ".\bootstrap\Start-BSSECustomerOnboarding.ps1"
+```
+
+Das Frontend fragt ab:
+
+- CustomerNumber
+- CustomerName
+- CustomerSlug (optional)
+- TenantId (optional)
+- AzureDocumentation
+- OPNsenseDocumentation
+- Firewalls (optional, kommasepariert)
+
+Der lokale Ablauf entspricht der Pipeline-Semantik:
+
+```text
+Eingaben
+    ↓
+Dry Run
+    ↓
+Dry-Run-Ausgabe prüfen
+    ↓
+lokale Bestätigung
+    ↓
+Apply
+    ↓
+Post-Apply Dry Run
+    ↓
+Idempotenz-Verifikation
+```
+
+Enthält der Dry Run `[BLOCKED]`, wird Apply lokal nicht angeboten. Enthält der Dry Run keinen `[PLAN]`-Zustand, wird kein Apply benötigt.
+
+Die gemeinsame Authentifizierungslogik erkennt die lokale Ausführung automatisch und verwendet:
 
 1. vorhandenen Azure-CLI-Kontext,
 2. passenden gecachten Tenant-/Subscription-Kontext,
 3. falls erforderlich gezielten interaktiven Login,
 4. lokalen Browser-Fallback nur für die Erstinitialisierung.
+
+Das Backend kann weiterhin direkt mit CLI-Parametern aufgerufen werden. Das ist vor allem für Debugging, Automatisierung und gezielte Regressionstests vorgesehen.
 
 ### Pipeline
 
@@ -126,6 +171,9 @@ sc-cust<CustomerNumber>-vaultwarden-deploy
 
 - automatische Local-/Pipeline-Erkennung in `BSSE.AzureDevOps.Common.ps1`
 - lokale Authentifizierung bleibt kompatibel
+- lokales interaktives Frontend `Start-BSSECustomerOnboarding.ps1`
+- lokale Parameterabfrage entspricht fachlich der Pipeline-Maske
+- lokaler Ablauf Dry Run → Bestätigung → Apply → Verify
 - Pipeline-Modus ohne interaktive Logins
 - AzureCLI@3-/Service-Connection-Erkennung
 - System.AccessToken-Kompatibilitätsfallback
