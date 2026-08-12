@@ -66,8 +66,27 @@ Firewall-Cannon-Deutschland-GmbH-Branch01
 
 ## Service Connections
 
+### Dokumentation / Read-only
+
 ```text
 sc-cust<CustomerNumber>-azure-reader
+```
+
+Diese Verbindung gehört zur Dokumentationsplattform und besitzt ausschließlich die erforderlichen Leserechte.
+
+### IaC Deployment
+
+```text
 sc-cust<CustomerNumber>-avd-deploy
 sc-cust<CustomerNumber>-vaultwarden-deploy
 ```
+
+Diese Verbindungen gehören zu den IaC-Produkten unter `20-IaC` und sind ausdrücklich nicht Bestandteil des Customer-/Dokumentations-Onboardings.
+
+### PlatformBootstrap
+
+```text
+sc-platform-bootstrap-azdo
+```
+
+Diese Verbindung dient ausschließlich der Azure-DevOps-Provisionierung durch den zentralen Customer-Onboarding-Workflow und ist von Dokumentations-Reader- und IaC-Deployment-Identitäten getrennt.
