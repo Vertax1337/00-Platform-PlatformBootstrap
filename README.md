@@ -1,4 +1,6 @@
-# BSSE Azure DevOps Platform – Bootstrap v1.9
+# BSSE Azure DevOps Platform – Bootstrap v1.9 Candidate
+
+> **Branch-Status:** `agent/project-branding` ist code-seitig vorbereitet, aber noch nicht merge-fertig. Die fünf freigegebenen PNG-Assets müssen vor dem Merge bytegenau unter `assets/project-icons/` versioniert werden. `main` bleibt bis dahin Source-of-Truth v1.8.
 
 ## Zielmodell
 
@@ -53,11 +55,11 @@ AVD und Vaultwarden sind **keine** Customer-Onboarding-/Dokumentationsmodule. Ia
 Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify
 ```
 
-## v1.9 – verwaltetes Project Branding
+## v1.9 Candidate – verwaltetes Project Branding
 
-Azure-DevOps-Projekt-Avatare sind Bestandteil des Bootstrap-Sollzustands.
+Azure-DevOps-Projekt-Avatare werden als Bestandteil des Bootstrap-Sollzustands integriert.
 
-Versionierte Assets:
+Vor dem Merge müssen die freigegebenen Originalassets versioniert vorhanden sein:
 
 ```text
 assets/
@@ -259,22 +261,20 @@ Der Check verändert keine Plattform- oder Kundenobjekte und verwendet die Self-
 
 ## Verifikationsstatus
 
-### Code-seitig implementiert
+### Auf dem Branding-Branch code-seitig implementiert
 
-- Core-Bootstrap,
-- Self-Hosting-Dependency-Bootstrap,
-- lokales interaktives Frontend,
-- zentrale Azure-DevOps-Pipeline,
-- automatische Local-/Pipeline-Erkennung,
-- secretless Entra-Identitäts-Sollzustand,
-- Azure-DevOps-Entitlement und Least-Privilege-ACL-Sollzustand,
-- dynamische WIF-Service-Endpoint-Type-Erkennung,
-- federated-credential-Sollzustand,
-- Pipeline-Registrierung und gezielte Endpoint-Autorisierung,
-- Dry Run / Approval / Apply / Verify,
-- persistente `CustomerConfiguration`,
-- verwaltetes Project-Branding-Mapping und Avatar-Sollzustand,
-- harte Trennung zu AVD/Vaultwarden.
+- zentrale Project-Branding-Funktion,
+- Core-/Customer-Provisionierungsintegration,
+- PNG-/Hash-Validierung,
+- Project-Property-Markerstrategie,
+- Fail-Closed-Validierung,
+- Mapping-/Asset-Regressionstest,
+- Dokumentation und v1.9-Candidate-Umsetzungsplan.
+
+### Vor Merge noch offen
+
+- die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` in Git versionieren,
+- Regressionstest gegen genau diese Git-Dateien ausführen.
 
 ### Noch nicht runtime-verifiziert
 
