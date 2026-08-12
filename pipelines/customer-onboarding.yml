@@ -1,0 +1,267 @@
+trigger: none
+pr: none
+
+parameters:
+- name: customerNumber
+  displayName: Customer / Debitor number
+  type: string
+  default: ''
+
+- name: customerName
+  displayName: Customer name
+  type: string
+  default: ''
+
+- name: customerSlug
+  displayName: Customer slug (optional)
+  type: string
+  default: ''
+
+- name: tenantId
+  displayName: Azure Tenant ID (optional)
+  type: string
+  default: ''
+
+- name: azureDocumentation
+  displayName: AzureDocumentation
+  type: boolean
+  default: true
+
+- name: opnsenseDocumentation
+  displayName: OPNsenseDocumentation
+  type: boolean
+  default: false
+
+- name: avd
+  displayName: AVD
+  type: boolean
+  default: false
+
+- name: vaultwarden
+  displayName: Vaultwarden
+  type: boolean
+  default: false
+
+- name: firewalls
+  displayName: Firewalls / sites (comma-separated, optional)
+  type: string
+  default: ''
+
+variables:
+  # Target service connection for the technician path.
+  # Must be created in 00-Platform and granted only the Azure DevOps permissions
+  # required by PlatformBootstrap. Do not replace with a broad Owner-style identity.
+  azureDevOpsServiceConnection: 'sc-platform-bootstrap-azdo'
+
+pool:
+  vmImage: windows-latest
+
+stages:
+- stage: Validate
+  displayName: Validate input
+  jobs:
+  - job: ValidateInput
+    displayName: Validate onboarding parameters
+    steps:
+    - checkout: self
+      clean: true
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        if ([string]::IsNullOrWhiteSpace('${{ parameters.customerNumber }}')) {
+          throw 'CustomerNumber is required.'
+        }
+
+        if ([string]::IsNullOrWhiteSpace('${{ parameters.customerName }}')) {
+          throw 'CustomerName is required.'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+          $tenant = [guid]::Empty
+          if (-not [guid]::TryParse('${{ parameters.tenantId }}', [ref]$tenant)) {
+            throw 'TenantId is not a valid GUID.'
+          }
+        }
+
+        Write-Host '[OK] Input validation passed.'
+      displayName: Validate parameters
+
+- stage: DryRun
+  displayName: Bootstrap dry run
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+  - job: DryRun
+    displayName: Generate onboarding plan
+    steps:
+    - checkout: self
+      clean: true
+    - task: AzureCLI@3
+      displayName: Run customer bootstrap - DRY RUN
+      inputs:
+        connectionType: azureDevOps
+        azureDevOpsServiceConnection: '$(azureDevOpsServiceConnection)'
+        scriptType: pscore
+        scriptLocation: inlineScript
+        allowNoSubscriptions: true
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          $modules = @()
+          if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+          if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+          if ('${{ parameters.avd }}' -eq 'True') { $modules += 'AVD' }
+          if ('${{ parameters.vaultwarden }}' -eq 'True') { $modules += 'Vaultwarden' }
+
+          $arguments = @(
+            '-OrganizationUrl', '$(System.CollectionUri)',
+            '-CustomerNumber', '${{ parameters.customerNumber }}',
+            '-CustomerName', '${{ parameters.customerName }}'
+          )
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+            $arguments += @('-CustomerSlug', '${{ parameters.customerSlug }}')
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $arguments += @('-TenantId', '${{ parameters.tenantId }}')
+          }
+
+          if ($modules.Count -gt 0) {
+            $arguments += @('-Modules', ($modules -join ','))
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+            $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
+          }
+
+          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments
+
+- stage: Approval
+  displayName: Review dry run
+  dependsOn: DryRun
+  condition: succeeded()
+  jobs:
+  - job: ManualReview
+    displayName: Technician approval
+    pool: server
+    timeoutInMinutes: 1440
+    steps:
+    - task: ManualValidation@1
+      timeoutInMinutes: 1440
+      inputs:
+        instructions: |
+          Review the complete Dry Run output.
+          Approve only if project, repositories, modules and firewall repositories match the intended customer onboarding and no unexpected CREATE/RENAME operation is shown.
+        onTimeout: reject
+
+- stage: Apply
+  displayName: Apply onboarding
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - job: Apply
+    displayName: Provision customer
+    steps:
+    - checkout: self
+      clean: true
+    - task: AzureCLI@3
+      displayName: Run customer bootstrap - APPLY
+      inputs:
+        connectionType: azureDevOps
+        azureDevOpsServiceConnection: '$(azureDevOpsServiceConnection)'
+        scriptType: pscore
+        scriptLocation: inlineScript
+        allowNoSubscriptions: true
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          $modules = @()
+          if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+          if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+          if ('${{ parameters.avd }}' -eq 'True') { $modules += 'AVD' }
+          if ('${{ parameters.vaultwarden }}' -eq 'True') { $modules += 'Vaultwarden' }
+
+          $arguments = @(
+            '-OrganizationUrl', '$(System.CollectionUri)',
+            '-CustomerNumber', '${{ parameters.customerNumber }}',
+            '-CustomerName', '${{ parameters.customerName }}',
+            '-Apply'
+          )
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+            $arguments += @('-CustomerSlug', '${{ parameters.customerSlug }}')
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $arguments += @('-TenantId', '${{ parameters.tenantId }}')
+          }
+
+          if ($modules.Count -gt 0) {
+            $arguments += @('-Modules', ($modules -join ','))
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+            $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
+          }
+
+          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments
+
+- stage: Verify
+  displayName: Verify idempotency
+  dependsOn: Apply
+  condition: succeeded()
+  jobs:
+  - job: Verify
+    displayName: Re-run dry run and verify no changes
+    steps:
+    - checkout: self
+      clean: true
+    - task: AzureCLI@3
+      displayName: Verify desired state
+      inputs:
+        connectionType: azureDevOps
+        azureDevOpsServiceConnection: '$(azureDevOpsServiceConnection)'
+        scriptType: pscore
+        scriptLocation: inlineScript
+        allowNoSubscriptions: true
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          $modules = @()
+          if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+          if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+          if ('${{ parameters.avd }}' -eq 'True') { $modules += 'AVD' }
+          if ('${{ parameters.vaultwarden }}' -eq 'True') { $modules += 'Vaultwarden' }
+
+          $arguments = @(
+            '-OrganizationUrl', '$(System.CollectionUri)',
+            '-CustomerNumber', '${{ parameters.customerNumber }}',
+            '-CustomerName', '${{ parameters.customerName }}'
+          )
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+            $arguments += @('-CustomerSlug', '${{ parameters.customerSlug }}')
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $arguments += @('-TenantId', '${{ parameters.tenantId }}')
+          }
+
+          if ($modules.Count -gt 0) {
+            $arguments += @('-Modules', ($modules -join ','))
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+            $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
+          }
+
+          $output = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments *>&1
+          $output | ForEach-Object { Write-Host $_ }
+          $text = ($output | Out-String)
+
+          if ($text -match '\[(PLAN|CREATE|RENAME|BLOCKED)\]') {
+            throw 'Post-Apply verification found a pending or blocked change. Desired state is not idempotent.'
+          }
+
+          Write-Host '[OK] Post-Apply dry run contains no pending provisioning change.'
