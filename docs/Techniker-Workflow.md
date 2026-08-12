@@ -115,4 +115,14 @@ sc-platform-bootstrap-azdo
 - echter Apply-Test gegen eine dafür vorgesehene Test-Provisionierung
 - Verifikation des Post-Apply-Idempotenzchecks
 
+### Noch funktional zu ergänzen
+
+`New-BSSECustomerProject.ps1 -Apply` erzeugt das CustomerConfiguration-Scaffold derzeit unter `generated-customers/<Projekt>` im lokalen Dateisystem des ausführenden Prozesses.
+
+Bei lokaler Ausführung bleibt dieses Ergebnis auf dem Entwickler-Endpunkt erhalten. Bei einem Microsoft-hosted Pipeline-Agent ist dieser Arbeitsbereich jedoch nicht als dauerhafte Kundenkonfiguration zu betrachten.
+
+Vor produktiver Nutzung des Technikerwegs muss deshalb noch ein kontrollierter Persistierungsweg umgesetzt werden. Ziel ist, den generierten und validierten Scaffold sicher in das jeweilige Kunden-Repository `CustomerConfiguration` zu überführen, ohne bestehende Inhalte oder Git-Historie unkontrolliert zu überschreiben.
+
+Die konkrete Push-/Merge-Strategie ist noch offen und wird nicht durch diesen Authentifizierungs-/Pipeline-Change vorweggenommen.
+
 Bis diese Punkte tatsächlich ausgeführt wurden, ist der Techniker-Pipelineweg als implementiert im Code, aber noch nicht produktiv verifiziert zu bewerten.
