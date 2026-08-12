@@ -1,10 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$OrganizationUrl = 'https://dev.azure.com/BSSE-CloudOps/',
-    [string]$Project = '00-Platform',
-    [string]$Repository = 'PlatformBootstrap',
-    [string]$PipelineName = 'Customer-Onboarding',
-    [string]$ServiceConnectionName = 'sc-platform-bootstrap-azdo'
+    [string]$OrganizationUrl = 'https://dev.azure.com/BSSE-CloudOps/'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,83 +21,13 @@ function Write-NotReady {
 
 Write-Host ''
 Write-Host 'BSSE Customer-Onboarding Readiness Check' -ForegroundColor Cyan
-Write-Host 'Dieser Check verändert keine Azure-DevOps-Objekte.' -ForegroundColor DarkGray
+Write-Host 'Dieser Check verändert keine Plattform- oder Kundenobjekte.' -ForegroundColor DarkGray
 Write-Host ''
 
-if (Get-Command git -ErrorAction SilentlyContinue) {
-    Write-Ready 'Git verfügbar (lokale und Pipeline-CustomerConfiguration-Persistenz).'
-}
-else {
-    Write-NotReady 'Git fehlt.'
-}
-
-try {
-    $session = Initialize-BSSEAzureDevOpsSession -OrganizationUrl $OrganizationUrl
-    $OrganizationUrl = $session.OrganizationUrl
-    Write-Ready "Azure-DevOps-Zugriff auf $OrganizationUrl verifiziert."
-}
-catch {
-    Write-NotReady "Azure-DevOps-Session nicht bereit: $($_.Exception.Message)"
-}
-
-if ($failures.Count -eq 0) {
-    if (Test-BSSEProjectExists -OrganizationUrl $OrganizationUrl -Project $Project) {
-        Write-Ready "Projekt $Project vorhanden."
-
-        $repos = @(Get-BSSEProjectRepositories -OrganizationUrl $OrganizationUrl -Project $Project)
-        if ($repos.name -contains $Repository) {
-            Write-Ready "Repository $Project/$Repository vorhanden."
-        }
-        else {
-            Write-NotReady "Repository $Project/$Repository fehlt."
-        }
-
-        try {
-            $endpointsJson = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
-                'devops','service-endpoint','list',
-                '--org', $OrganizationUrl,
-                '--project', $Project,
-                '--output','json',
-                '--only-show-errors'
-            )
-            $endpoints = @($endpointsJson | ConvertFrom-Json)
-            if ($endpoints.name -contains $ServiceConnectionName) {
-                Write-Ready "Service Connection $ServiceConnectionName vorhanden."
-            }
-            else {
-                Write-NotReady "Service Connection $ServiceConnectionName fehlt."
-            }
-        }
-        catch {
-            Write-NotReady "Service Connections konnten nicht geprüft werden: $($_.Exception.Message)"
-        }
-
-        try {
-            $pipelinesJson = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
-                'pipelines','list',
-                '--org', $OrganizationUrl,
-                '--project', $Project,
-                '--output','json',
-                '--only-show-errors'
-            )
-            $pipelines = @($pipelinesJson | ConvertFrom-Json)
-            if ($pipelines.name -contains $PipelineName) {
-                Write-Ready "Pipeline $PipelineName registriert."
-            }
-            else {
-                Write-NotReady "Pipeline $PipelineName noch nicht registriert."
-            }
-        }
-        catch {
-            Write-NotReady "Pipelines konnten nicht geprüft werden: $($_.Exception.Message)"
-        }
-    }
-    else {
-        Write-NotReady "Projekt $Project fehlt."
-    }
-}
-
 $requiredLocalFiles = @(
+    'BSSE.AzureDevOps.Common.ps1',
+    'New-BSSEAzureDevOpsCore.ps1',
+    'Initialize-BSSEPlatformDependencies.ps1',
     'New-BSSECustomerProject.ps1',
     'Sync-BSSECustomerConfiguration.ps1',
     'Start-BSSECustomerOnboarding.ps1',
@@ -125,6 +51,39 @@ else {
     Write-NotReady 'Lokale Pipeline-YAML pipelines/customer-onboarding.yml fehlt.'
 }
 
+if (Get-Command git -ErrorAction SilentlyContinue) {
+    Write-Ready 'Git verfügbar.'
+}
+else {
+    Write-NotReady 'Git fehlt.'
+}
+
+if ($failures.Count -eq 0) {
+    Write-Host ''
+    Write-Host 'Platform dependency verification:' -ForegroundColor Cyan
+
+    try {
+        $dependencyOutput = @(& "$PSScriptRoot\Initialize-BSSEPlatformDependencies.ps1" `
+            -OrganizationUrl $OrganizationUrl *>&1)
+
+        $dependencyOutput | ForEach-Object { Write-Host $_ }
+        $dependencyText = ($dependencyOutput | Out-String)
+
+        if ($dependencyText -match '\[BLOCKED\]') {
+            Write-NotReady 'Platform dependency verification enthält einen BLOCKED-Zustand.'
+        }
+        elseif ($dependencyText -match '\[PLAN\]') {
+            Write-NotReady 'Platform dependencies sind noch nicht vollständig eingerichtet; Dry Run enthält PLAN-Zustände.'
+        }
+        else {
+            Write-Ready 'Self-hosting Platform-Dependencies sind vollständig vorhanden.'
+        }
+    }
+    catch {
+        Write-NotReady "Platform dependency verification fehlgeschlagen: $($_.Exception.Message)"
+    }
+}
+
 Write-Host ''
 if ($failures.Count) {
     Write-Host 'Customer-Onboarding ist noch nicht vollständig testbereit:' -ForegroundColor Yellow
@@ -135,4 +94,4 @@ if ($failures.Count) {
 }
 
 Write-Host '[READY] Lokaler und zentraler Customer-Onboarding-Weg sind von den prüfbaren Voraussetzungen her testbereit.' -ForegroundColor Green
-Write-Host 'Hinweis: Dies ist ein Readiness-Check, keine Runtime-Verifikation eines Onboarding-Laufs.' -ForegroundColor DarkGray
+Write-Host 'Hinweis: Dies ist ein Readiness-Check, keine Runtime-Verifikation eines Kunden-Onboarding-Laufs.' -ForegroundColor DarkGray
