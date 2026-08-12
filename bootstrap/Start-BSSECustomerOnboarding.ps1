@@ -138,6 +138,61 @@ function Invoke-BSSECustomerConfigurationSync {
     return @(& "$PSScriptRoot\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1)
 }
 
+function Invoke-BSSEPlatformDependencies {
+    param([switch]$Apply)
+
+    $arguments = @('-OrganizationUrl', $OrganizationUrl)
+    if ($Apply) { $arguments += '-Apply' }
+    return @(& "$PSScriptRoot\Initialize-BSSEPlatformDependencies.ps1" @arguments *>&1)
+}
+
+Write-Host ''
+Write-Host '=== PLATFORM DEPENDENCIES / SELF-HOSTING READINESS ===' -ForegroundColor Cyan
+$dependencyDryRun = Invoke-BSSEPlatformDependencies
+$dependencyDryRun | ForEach-Object { Write-Host $_ }
+$dependencyText = ($dependencyDryRun | Out-String)
+
+if ($dependencyText -match '\[BLOCKED\]') {
+    Write-Host ''
+    Write-Host '[STOP] Plattform-Dependencies enthalten einen BLOCKED-Zustand. Customer-Onboarding wird nicht gestartet.' -ForegroundColor Red
+    exit 2
+}
+
+if ($dependencyText -match '\[PLAN\]') {
+    Write-Host ''
+    Write-Host 'PLATFORM INITIALIZATION REQUIRED' -ForegroundColor Yellow
+    Write-Host 'Die Umgebung ist noch nicht vollständig für den zentralen Technikerweg eingerichtet.' -ForegroundColor Yellow
+    Write-Host 'Geplant sind ausschließlich die im Dependency-Dry-Run angezeigten Plattformänderungen.' -ForegroundColor DarkGray
+    Write-Host ''
+
+    if (-not (Read-BSSEYesNo -Prompt 'Plattform-Dependencies jetzt einmalig lokal einrichten?' -Default $false)) {
+        Write-Host 'Abgebrochen. Es wurden weder Plattform- noch Kundenänderungen angewendet.' -ForegroundColor Cyan
+        exit 0
+    }
+
+    Write-Host ''
+    Write-Host '=== APPLY: PLATFORM DEPENDENCIES ===' -ForegroundColor Cyan
+    $dependencyApply = Invoke-BSSEPlatformDependencies -Apply
+    $dependencyApply | ForEach-Object { Write-Host $_ }
+
+    Write-Host ''
+    Write-Host '=== VERIFY: PLATFORM DEPENDENCIES ===' -ForegroundColor Cyan
+    $dependencyVerify = Invoke-BSSEPlatformDependencies
+    $dependencyVerify | ForEach-Object { Write-Host $_ }
+    $dependencyVerifyText = ($dependencyVerify | Out-String)
+
+    if ($dependencyVerifyText -match '\[(PLAN|BLOCKED)\]') {
+        throw 'Plattform-Erstinitialisierung ist nach Apply noch nicht idempotent/vollständig. Customer-Onboarding wird nicht fortgesetzt.'
+    }
+
+    Write-Host ''
+    Write-Host '[OK] Plattform-Dependencies sind eingerichtet und verifiziert. Customer-Onboarding wird fortgesetzt.' -ForegroundColor Green
+}
+else {
+    Write-Host ''
+    Write-Host '[OK] Plattform-Dependencies sind bereits vorhanden. Keine Plattformänderung erforderlich.' -ForegroundColor Green
+}
+
 Write-Host ''
 Write-Host 'BSSE Customer Onboarding - Local Technician Frontend' -ForegroundColor Cyan
 Write-Host 'Dasselbe Backend und dieselbe CustomerConfiguration-Persistenz wie die Azure-DevOps-Pipeline.' -ForegroundColor DarkGray
