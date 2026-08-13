@@ -70,10 +70,10 @@ stages:
 
         if ('${{ parameters.confirmTemporarySystemAccessToken }}' -ne 'True') {
           throw @'
-This is the temporary System.AccessToken E2E test pipeline.
-Set confirmTemporarySystemAccessToken=true explicitly to run it.
-The productive authentication target remains sc-platform-bootstrap-azdo via WIF.
-'@
+        This is the temporary System.AccessToken E2E test pipeline.
+        Set confirmTemporarySystemAccessToken=true explicitly to run it.
+        The productive authentication target remains sc-platform-bootstrap-azdo via WIF.
+        '@
         }
 
         if ([string]::IsNullOrWhiteSpace('${{ parameters.customerNumber }}')) {
