@@ -328,14 +328,48 @@ function Ensure-BSSEAzureDevOpsEntitlement {
         }
 
         $url = "https://vsaex.dev.azure.com/$OrganizationName/_apis/serviceprincipalentitlements?api-version=7.1-preview.1"
-        $response = Invoke-BSSEDevOpsRest -Method POST -Url $url -Body $body
-        if ($response.operationResult -and -not $response.operationResult.isSuccess) {
-            throw "Azure DevOps service-principal entitlement konnte nicht angelegt werden: $($response | ConvertTo-Json -Depth 20)"
+        $maxAttempts = 6
+        $delaySeconds = 5
+        $response = $null
+
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $response = Invoke-BSSEDevOpsRest -Method POST -Url $url -Body $body
+
+            $operationFailed = (
+                ($response.operationResult -and $response.operationResult.isSuccess -eq $false) -or
+                ($response.PSObject.Properties['isSuccess'] -and $response.isSuccess -eq $false)
+            )
+
+            if (-not $operationFailed) {
+                break
+            }
+
+            $transientMaterializationFailure = @($response.operationResult.errors | Where-Object {
+                [int]$_.key -eq 5000 -and ([string]$_.value -match 'VS403283')
+            }).Count -gt 0
+
+            if (-not $transientMaterializationFailure -or $attempt -eq $maxAttempts) {
+                throw "Azure DevOps service-principal entitlement konnte nicht angelegt werden: $($response | ConvertTo-Json -Depth 20)"
+            }
+
+            Write-Host "[WAIT] Azure DevOps hat den neuen Entra Service Principal noch nicht materialisiert (VS403283). Retry $attempt/$maxAttempts ..." -ForegroundColor Yellow
+            Start-Sleep -Seconds $delaySeconds
+
+            $graphPrincipal = Wait-BSSEAzureDevOpsGraphServicePrincipal `
+                -OrganizationName $OrganizationName `
+                -OriginId $EntraServicePrincipal.id `
+                -Attempts 1
+
+            if ($graphPrincipal) {
+                break
+            }
         }
 
-        $graphPrincipal = Wait-BSSEAzureDevOpsGraphServicePrincipal `
-            -OrganizationName $OrganizationName `
-            -OriginId $EntraServicePrincipal.id
+        if (-not $graphPrincipal) {
+            $graphPrincipal = Wait-BSSEAzureDevOpsGraphServicePrincipal `
+                -OrganizationName $OrganizationName `
+                -OriginId $EntraServicePrincipal.id
+        }
 
         if (-not $graphPrincipal) {
             throw "Azure DevOps service principal wurde nach Entitlement-Erstellung nicht rechtzeitig wiedergefunden."
@@ -397,6 +431,105 @@ function Get-BSSECollectionCreateProjectsMetadata {
     }
 }
 
+function ConvertFrom-BSSEPermissionListOutput {
+    param(
+        [Parameter(Mandatory)][string]$Output,
+        [Parameter(Mandatory)][string]$Subject
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Output)) {
+        return @()
+    }
+
+    try {
+        $items = @($Output | ConvertFrom-Json)
+    }
+    catch {
+        throw "Azure-DevOps-Berechtigungsausgabe konnte nicht als JSON gelesen werden: $($_.Exception.Message)"
+    }
+
+    $records = @()
+    foreach ($item in $items) {
+        if (-not $item.PSObject.Properties['token'] -or [string]::IsNullOrWhiteSpace([string]$item.token)) {
+            throw "Azure-DevOps-Berechtigungsausgabe enthält ein ACL-Objekt ohne Token. Fail Closed statt Ausgabeformat zu raten."
+        }
+
+        [int64]$effectiveAllow = 0
+        [int64]$effectiveDeny = 0
+        $resolved = $false
+
+        # Some CLI versions/formatters expose flattened Effective Allow/Deny values.
+        if ($item.PSObject.Properties['effectiveAllow'] -or $item.PSObject.Properties['effectiveDeny']) {
+            if ($item.PSObject.Properties['effectiveAllow']) {
+                $effectiveAllow = [int64]$item.effectiveAllow
+            }
+            if ($item.PSObject.Properties['effectiveDeny']) {
+                $effectiveDeny = [int64]$item.effectiveDeny
+            }
+            $resolved = $true
+        }
+        elseif ($item.PSObject.Properties['acesDictionary']) {
+            # The documented JSON shape is an ACL with acesDictionary; effective values live
+            # under AccessControlEntry.extendedInfo. The CLI has already filtered by --subject.
+            if ($null -eq $item.acesDictionary) {
+                $resolved = $true
+            }
+            else {
+                $aceProperties = @($item.acesDictionary.PSObject.Properties)
+                if ($aceProperties.Count -eq 0) {
+                    $resolved = $true
+                }
+                else {
+                    $aceProperty = $aceProperties | Where-Object { $_.Name -eq $Subject } | Select-Object -First 1
+
+                    if (-not $aceProperty) {
+                        $descriptorMatches = @($aceProperties | Where-Object {
+                            $_.Value -and $_.Value.PSObject.Properties['descriptor'] -and ([string]$_.Value.descriptor -eq $Subject)
+                        })
+
+                        if ($descriptorMatches.Count -eq 1) {
+                            $aceProperty = $descriptorMatches[0]
+                        }
+                        elseif ($aceProperties.Count -eq 1) {
+                            # --subject may have been an email/UPN while the dictionary key is the
+                            # resolved Azure DevOps identity descriptor. A single returned ACE is unambiguous.
+                            $aceProperty = $aceProperties[0]
+                        }
+                        else {
+                            throw "Azure-DevOps-ACL für Token '$($item.token)' enthält mehrere ACEs, aber keiner ist dem Subject '$Subject' eindeutig zuordenbar."
+                        }
+                    }
+
+                    $ace = $aceProperty.Value
+                    if (-not $ace -or -not $ace.PSObject.Properties['extendedInfo']) {
+                        throw "Azure-DevOps-ACL für Token '$($item.token)' enthält keine extendedInfo für die effektive Berechtigungsprüfung."
+                    }
+
+                    if ($ace.extendedInfo -and $ace.extendedInfo.PSObject.Properties['effectiveAllow']) {
+                        $effectiveAllow = [int64]$ace.extendedInfo.effectiveAllow
+                    }
+                    if ($ace.extendedInfo -and $ace.extendedInfo.PSObject.Properties['effectiveDeny']) {
+                        $effectiveDeny = [int64]$ace.extendedInfo.effectiveDeny
+                    }
+                    $resolved = $true
+                }
+            }
+        }
+
+        if (-not $resolved) {
+            throw "Unbekanntes Azure-DevOps-Berechtigungsausgabeformat für Token '$($item.token)'. Fail Closed statt Berechtigungen zu raten."
+        }
+
+        $records += [pscustomobject]@{
+            Token          = [string]$item.token
+            EffectiveAllow = $effectiveAllow
+            EffectiveDeny  = $effectiveDeny
+        }
+    }
+
+    return @($records)
+}
+
 function Get-BSSERootCollectionTokenFromAdministrator {
     param(
         [Parameter(Mandatory)][string]$NamespaceId,
@@ -416,10 +549,12 @@ function Get-BSSERootCollectionTokenFromAdministrator {
         throw "Collection security tokens konnten für '$AdministratorSubject' nicht gelesen werden.`n$($result.Output)"
     }
 
-    $items = @($result.Output | ConvertFrom-Json)
-    $candidates = @($items | Where-Object {
-        $_.token -and (([int64]$_.effectiveAllow -band $CreateProjectsBit) -eq $CreateProjectsBit)
-    } | Sort-Object { ([string]$_.token).Length })
+    $records = @(ConvertFrom-BSSEPermissionListOutput -Output $result.Output -Subject $AdministratorSubject)
+    $candidates = @($records | Where-Object {
+        $_.Token -and
+        (([int64]$_.EffectiveAllow -band $CreateProjectsBit) -eq $CreateProjectsBit) -and
+        (([int64]$_.EffectiveDeny -band $CreateProjectsBit) -eq 0)
+    } | Sort-Object { ([string]$_.Token).Length })
 
     if (-not $candidates.Count) {
         throw @"
@@ -431,7 +566,7 @@ einen Organisationsadministrator, der 'Create new projects' vergeben darf.
 "@
     }
 
-    return [string]$candidates[0].token
+    return [string]$candidates[0].Token
 }
 
 function Get-BSSEPermissionState {
@@ -455,9 +590,17 @@ function Get-BSSEPermissionState {
         return $null
     }
 
-    $items = @($result.Output | ConvertFrom-Json)
-    $match = $items | Where-Object { $_.token -eq $Token } | Select-Object -First 1
-    return $match
+    $records = @(ConvertFrom-BSSEPermissionListOutput -Output $result.Output -Subject $Subject)
+    $matches = @($records | Where-Object { $_.Token -eq $Token })
+    if ($matches.Count -gt 1) {
+        throw "Azure DevOps lieferte mehrere Berechtigungszustände für Token '$Token' und Subject '$Subject'."
+    }
+
+    if ($matches.Count -eq 0) {
+        return $null
+    }
+
+    return $matches[0]
 }
 
 function Ensure-BSSECreateProjectsPermission {
@@ -487,12 +630,12 @@ function Ensure-BSSECreateProjectsPermission {
         -Subject $GraphPrincipal.descriptor `
         -Token $rootToken
 
-    if ($state -and (([int64]$state.effectiveDeny -band $metadata.Bit) -eq $metadata.Bit)) {
+    if ($state -and (([int64]$state.EffectiveDeny -band $metadata.Bit) -eq $metadata.Bit)) {
         Write-Host "[BLOCKED] Create new projects is explicitly/effectively denied for $IdentityName." -ForegroundColor Red
         throw "Ein vorhandenes Deny wird vom Bootstrap nicht automatisch überschrieben."
     }
 
-    if ($state -and (([int64]$state.effectiveAllow -band $metadata.Bit) -eq $metadata.Bit)) {
+    if ($state -and (([int64]$state.EffectiveAllow -band $metadata.Bit) -eq $metadata.Bit)) {
         Write-Host "[EXISTS] Collection permission: Create new projects = Allow" -ForegroundColor DarkGray
         return
     }
@@ -523,7 +666,9 @@ function Ensure-BSSECreateProjectsPermission {
         -Subject $GraphPrincipal.descriptor `
         -Token $rootToken
 
-    if (-not $state -or (([int64]$state.effectiveAllow -band $metadata.Bit) -ne $metadata.Bit)) {
+    if (-not $state -or
+        (([int64]$state.EffectiveAllow -band $metadata.Bit) -ne $metadata.Bit) -or
+        (([int64]$state.EffectiveDeny -band $metadata.Bit) -eq $metadata.Bit)) {
         throw "Create new projects konnte nach der Vergabe nicht verifiziert werden."
     }
 
