@@ -1,10 +1,10 @@
 # Changelog
 
-## v1.9 Candidate (`agent/project-branding`)
+## v1.9 Candidate (`main`)
 
 - zentrale Project-Branding-Komponente `bootstrap/BSSE.AzureDevOps.Branding.ps1` code-seitig implementiert
 - verbindliches Avatar-Mapping für `00-Platform`, `10-Automation`, `20-IaC`, `99-LAB` und alle `CUST-*`
-- Zielstruktur für die fünf freigegebenen Original-Branding-Assets unter `assets/project-icons/`; die Binärdateien sind auf diesem Branch noch nicht im Git-Tree und müssen vor dem Merge bytegenau versioniert werden
+- die fünf freigegebenen Original-Branding-Assets sind unter `assets/project-icons/` in `main` versioniert; Dateinamen, Größen und Git-Blob-Inhalte wurden gegen die zuvor geprüften ZIP-Originale abgeglichen
 - Core-Bootstrap bindet Project Branding für bestehende und neu erstellte Core-Projekte ein
 - Customer-Provisionierung bindet `cust-generic.png` automatisch für bestehende und neu erstellte `CUST-*`-Projekte ein
 - Avatar-Write über die offiziell dokumentierte Azure-DevOps-Core-API `Set Project Avatar` (`7.1-preview.1`)
@@ -17,8 +17,11 @@
 - bekannte API-Grenze dokumentiert: manuelle Avatar-Drift außerhalb des Bootstraps ist bei unverändertem Marker mit der dokumentierten Core-API nicht zuverlässig lesbar
 - neuer Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert Mapping, Original-Dateigrößen und SHA-256 der fünf freigegebenen ZIP-Assets
 - neue Dokumentation `docs/Project-Branding.md`
-- README, Techniker-Workflow und Umsetzungsplan als v1.9-Candidate fortgeschrieben; `main` bleibt bis Asset-Integration und Test Source-of-Truth v1.8
-- reale Azure-DevOps-Avatar-/Property-Runtime-Verifikation bleibt bis zum ersten echten Lauf ausdrücklich offen
+- erster realer Self-Hosting-Dry-Run am 13.08.2026: Azure CLI, Azure-DevOps-CLI-Erweiterung, Organisationsprofil/Tenant, Azure-Anmeldung und Azure-DevOps-Zugriff wurden lokal erfolgreich erreicht; der Lauf stoppte vor der Core-Verarbeitung an einem Runtime-Fehler der internen PowerShell-Parameterübergabe
+- gefundene Fehlerklasse korrigiert: benannte Parameter werden bei internen `.ps1`-Aufrufen nun per Hashtable-Splatting statt über String-Arrays übergeben
+- korrigiert wurden `Initialize-BSSEPlatformDependencies.ps1`, `Start-BSSECustomerOnboarding.ps1` und `pipelines/customer-onboarding.yml`
+- der korrigierte Self-Hosting-Dry-Run ist noch erneut auszuführen; daraus folgt ausdrücklich noch keine erfolgreiche WIF-/Service-Connection-/Avatar-Runtime-Verifikation
+- reale Azure-DevOps-Avatar-/Property-Runtime-Verifikation bleibt bis zum entsprechenden echten Lauf ausdrücklich offen
 
 ## v1.8
 
@@ -43,7 +46,7 @@
 
 - lokaler und zentraler Customer-Onboarding-Weg auf denselben vollständigen Zielablauf vereinheitlicht
 - neues `bootstrap/Sync-BSSECustomerConfiguration.ps1` für persistente CustomerConfiguration
-- fehlende Bootstrap-Zieldateien werden geplant/angelegt, identische Dateien bleiben unverändert, abweichende vorhandene Dateien führen zu `BLOCKED`
+- fehlende Bootstrap-Zieldateien werden geplant/angelegt, identische Dateien bleiben unverändert, abweichende vorhandene Zieldateien führen zu `BLOCKED`
 - CustomerConfiguration wird nicht mehr nur als flüchtiges lokales/Agent-Scaffold behandelt
 - Git-Persistenz verwendet Azure-DevOps-OAuth-/Entra-Token ohne Token in der Remote-URL
 - lokales `Start-BSSECustomerOnboarding.ps1` prüft und persistiert Customer Boundary + CustomerConfiguration und verifiziert beide nach Apply erneut
