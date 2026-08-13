@@ -169,7 +169,7 @@ PlatformBootstrap-Ausführungsquelle
 Entra-Plattformidentität
 Azure-DevOps-Entitlement
 Collection-Berechtigung
-WIF-Service-Connection
+produktive WIF-Service-Connection
 FIC
 Pipeline-Registrierung/-Autorisierung
 ```
@@ -257,7 +257,7 @@ Runtime bestätigt:
 - Application Object ID als Alternative wurde ausgeschlossen,
 - `AzureADMyOrg`, Application Administrator, explizites App-Ownership und vorhandenes Service-Principal-Ownership wurden als einfache Ursachen ausgeschlossen.
 
-Produktive WIF-Finalisierung bleibt daher offen. Es werden keine weiteren spekulativen ID-/Payload-Änderungen in den produktiven Bootstrap übernommen.
+Produktive WIF-Finalisierung bleibt offen. Es werden keine weiteren spekulativen ID-/Payload-Änderungen in den produktiven Bootstrap übernommen.
 
 Fachdokumentation:
 
@@ -275,6 +275,8 @@ Reihenfolge für Probe-Drafts:
    mit projectIds=<projectId>&deep=false
 3. HTTP 204 / Endpoint-Abwesenheit verifizieren
 ```
+
+Das vor dem Diagnoseversuch bereits vorhandene Service-Principal-Ownership bleibt unverändert. Das nur für die Diagnose hinzugefügte App-Registration-Ownership wird wieder entfernt.
 
 ## 9. Customer-Onboarding – produktiver Zielweg
 
@@ -312,35 +314,63 @@ Dieser Weg bleibt bis zur WIF-Klärung auth-seitig BLOCKED.
 
 ## 10. Temporärer Azure-DevOps-E2E-Testpfad
 
-Die gemeinsamen Backend-Komponenten unterstützen bereits explizit gemapptes `System.AccessToken` als Pipeline-Kompatibilitätsweg. Project Branding und `CustomerConfiguration`-Git verwenden denselben kurzlebigen Jobtoken, wenn er als `SYSTEM_ACCESSTOKEN` bereitgestellt wird.
+### Bevorzugt: AzureRM-WIF-Bridge
 
-Zur isolierten E2E-Validierung während des WIF-BLOCKED-Status existiert getrennt:
+Während der produktive `workloadidentityuser`-Pfad BLOCKED ist, wird die fachliche Customer-Onboarding-Pipeline über eine getrennte temporäre AzureRM-WIF-Bridge E2E getestet.
+
+Pipeline:
 
 ```text
-pipelines/customer-onboarding-system-access-token-test.yml
-bootstrap/Register-BSSECustomerOnboardingSystemTokenTestPipeline.ps1
+pipelines/customer-onboarding-azure-rm-wif-bridge-test.yml
 ```
 
 Pipeline-Name:
 
 ```text
+Customer-Onboarding-TEST-AzureRmWifBridge
+```
+
+Bridge-Zielobjekte:
+
+```text
+sc-platform-bootstrap-azdo-arm-bridge
+fic-sc-platform-bootstrap-azdo-arm-bridge
+```
+
+Eigenschaften:
+
+- AzureRM Service Connection mit `WorkloadIdentityFederation`,
+- dieselbe dedizierte Plattformidentität wie der produktive Zielweg,
+- keine Azure-RBAC-Zuweisung,
+- all-zero Subscription-ID nur zum Unterdrücken eines Azure-Subscription-Kontexts,
+- `AzureCLI@3` mit `allowNoSubscriptions: true`,
+- aus der WIF-Entra-Session wird ein Azure-DevOps-Entra-Token bezogen,
+- dieselben Backend-Skripte wie der produktive Weg,
+- kein PAT,
+- kein Client Secret,
+- explizites Run-Opt-in erforderlich,
+- `Validate → DryRun → Approval → Apply → Verify` bleibt erhalten,
+- Bridge ersetzt den produktiven `workloadidentityuser`-Zielzustand nicht.
+
+Fachdokumentation:
+
+```text
+docs/AzureRM-WIF-Bridge-Test.md
+```
+
+**Status:** Testpipeline code-seitig implementiert; Bridge-Service-Connection, Bridge-FIC, pipeline-spezifische Autorisierung und realer E2E-Lauf sind noch nicht runtime-verifiziert.
+
+### Sekundärer Fallback: System.AccessToken
+
+Der bereits implementierte getrennte System.AccessToken-Testpfad bleibt als sekundärer Kompatibilitätsfallback vorhanden:
+
+```text
+pipelines/customer-onboarding-system-access-token-test.yml
+bootstrap/Register-BSSECustomerOnboardingSystemTokenTestPipeline.ps1
 Customer-Onboarding-TEST-SystemAccessToken
 ```
 
-Regeln:
-
-- verwendet dieselben Backend-Skripte wie der produktive Weg,
-- kein PAT,
-- kein Client Secret,
-- pro Run explizites Opt-in erforderlich,
-- Validate gibt die tatsächlich verwendete Build-Service-Identität aus,
-- Dry Run und Manual Approval bleiben verpflichtend,
-- vor Apply werden effektive Rechte dieser Build-Service-Identität geprüft,
-- keine vorsorgliche breite Administratorberechtigung,
-- Testpfad ersetzt den produktiven WIF-Zielzustand nicht,
-- nach WIF-Klärung wird der Testpfad wieder entfernt oder deaktiviert.
-
-Die Berechtigungen des `System.AccessToken` ergeben sich aus Job Authorization Scope und der tatsächlich verwendeten Build-Service-Identität. Diese Identität ist deshalb vor dem ersten mutierenden Apply anhand des Validate-Outputs eindeutig festzustellen.
+Er wird nicht bevorzugt, weil die Build-Service-Identität dafür zusätzliche Customer-Onboarding-Rechte benötigen würde. Die AzureRM-WIF-Bridge verwendet dagegen die bereits dedizierte Plattformidentität.
 
 ## 11. Lokaler Customer-Onboarding-Weg
 
@@ -357,7 +387,7 @@ Lokales Frontend:
 bootstrap/Start-BSSECustomerOnboarding.ps1
 ```
 
-Der lokale Weg nutzt die angemeldete Administratoridentität und ist fachlich unabhängig von WIF. Die aktuelle Frontend-Readiness koppelt ihn jedoch noch an die vollständigen Self-Hosting-Dependencies; diese Kopplung wird erst geändert, wenn der temporäre Betriebsweg ausdrücklich als dauerhaft notwendig beschlossen wird. Bis dahin ist die produktive WIF-Abhängigkeit nicht stillschweigend degradiert.
+Der lokale Weg nutzt die angemeldete Administratoridentität und ist fachlich unabhängig von WIF. Die aktuelle Frontend-Readiness koppelt ihn jedoch noch an die vollständigen produktiven Self-Hosting-Dependencies. Diese Kopplung wird nicht stillschweigend degradiert; der temporäre Bridge-Testpfad ist separat.
 
 ## 12. CustomerConfiguration
 
@@ -385,19 +415,11 @@ Produktive Registrierung:
 bootstrap/Register-BSSECustomerOnboardingPipeline.ps1
 ```
 
-Temporäre Testregistrierung:
-
-```text
-bootstrap/Register-BSSECustomerOnboardingSystemTokenTestPipeline.ps1
-```
-
-Readiness:
+Produktive Readiness:
 
 ```text
 bootstrap/Test-BSSECustomerOnboardingReadiness.ps1
 ```
-
-Produktiver Readiness-Zustand:
 
 ```text
 kein PLAN / kein BLOCKED → READY
@@ -405,7 +427,7 @@ PLAN                    → Dependency fehlt
 BLOCKED / Fehler         → NOT READY
 ```
 
-Solange die produktive WIF-Service-Connection BLOCKED ist, ist der produktive zentrale Weg nicht vollständig READY. Die TEST-Pipeline ist davon getrennt.
+Solange die produktive WIF-Service-Connection BLOCKED ist, ist der produktive zentrale Weg nicht vollständig READY. Die temporären TEST-Pipelines sind davon getrennt und dürfen diesen Status nicht als produktiv READY ausgeben.
 
 ## 14. Promotion / Testreihenfolge
 
@@ -443,7 +465,8 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - `Basic + 00-Platform/Readers + Create new projects = Allow`,
 - Pipeline darf sich nicht selbst privilegieren,
 - direktes Arbeiten auf `main`,
-- produktiver WIF-Zielzustand bleibt trotz aktuellem Preview-BLOCKED unverändert.
+- produktiver WIF-Zielzustand bleibt trotz Preview-BLOCKED unverändert,
+- AzureRM-WIF-Bridge ist nur temporärer E2E-Testpfad und keine Architekturänderung.
 
 ### Bereits implementiert
 
@@ -458,7 +481,8 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - ACL-Normalisierung / CreateProjects-Grant,
 - `System.AccessToken`-Kompatibilitätsweg in Common/Branding/CustomerConfiguration,
 - temporäre System.AccessToken-E2E-Testpipeline,
-- temporärer Testpipeline-Registrierungshelfer.
+- temporäre AzureRM-WIF-Bridge-Testpipeline,
+- Fachdokumentation für den AzureRM-WIF-Bridge-Test.
 
 ### Bereits runtime-verifiziert
 
@@ -475,10 +499,13 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - realer Issuer/Subject,
 - passendes Probe-FIC,
 - UI-Finish-Setup-Request,
-- Diagnose-Cleanup eines Probe-Drafts mit HTTP 204.
+- Diagnose-Cleanup eines Probe-Drafts mit HTTP 204,
+- `AzureADMyOrg` für die Plattform-App.
 
 ### Noch offen
 
+- Diagnoseobjekte des letzten UI-Probes vollständig bereinigen,
+- nur diagnostisch hinzugefügtes App-Registration-Ownership entfernen,
 - Branding-Regressionstest lokal ausführen,
 - Core-Icons visuell in Azure DevOps bestätigen,
 - `VS403283`-Retry in einem frischen Same-Process-Erstlauf runtime-verifizieren,
@@ -487,17 +514,21 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - produktive pipeline-spezifische Service-Connection-Autorisierung,
 - produktiver Dependency-Verify ohne WIF-PLAN/BLOCKED,
 - produktiver WIF-Customer-Onboarding-E2E,
-- temporären System.AccessToken-E2E-Lauf ausführen und Build-Service-Rechte bestimmen,
+- AzureRM-WIF-Bridge-Service-Connection/FIC erzeugen und verifizieren,
+- Bridge-Testpipeline registrieren/gezielt autorisieren,
+- Bridge-Validate mit Azure-DevOps-Entra-Token runtime-verifizieren,
+- Bridge-DryRun/Approval/Apply/Verify E2E ausführen,
 - Git-Push nach `CustomerConfiguration` aus echtem Pipeline-Lauf bestätigen,
 - erst danach v1.9 als vollständig verifiziert markieren.
 
 ## 16. Aktueller nächster Umsetzungsschritt
 
-1. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` und `fic-sc-platform-bootstrap-azdo-ui-probe` bereinigen; das nur für den Test hinzugefügte App-Registration-Ownership des Administrators wieder entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
+1. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` / zugehöriges FIC bereinigen; nur das für den Test hinzugefügte App-Registration-Ownership entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
 2. GitHub-`main` in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
-3. `Customer-Onboarding-TEST-SystemAccessToken` lokal registrieren.
-4. Testpipeline mit explizitem Opt-in starten.
-5. Validate-Output der tatsächlichen Build-Service-Identität prüfen.
-6. Dry Run prüfen; vor Approval nur die minimal erforderlichen Testberechtigungen dieser konkreten Build-Service-Identität vergeben.
-7. Apply + Verify ausführen und E2E-Ergebnis dokumentieren.
-8. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung auf den Testauthentifizierungsweg.
+3. Temporäre AzureRM-WIF-Bridge `sc-platform-bootstrap-azdo-arm-bridge` erzeugen.
+4. Passendes separates Bridge-FIC erzeugen und exakt verifizieren.
+5. `Customer-Onboarding-TEST-AzureRmWifBridge` registrieren und ausschließlich für diese Bridge-Service-Connection autorisieren.
+6. Validate-Stage starten und Azure-DevOps-Entra-Token der dedizierten Plattformidentität verifizieren.
+7. Customer-Onboarding-Dry-Run prüfen.
+8. Nach Review Apply + Verify für den E2E-Test ausführen.
+9. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung des produktiven `customer-onboarding.yml` auf die Bridge.
