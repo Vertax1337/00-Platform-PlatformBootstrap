@@ -3,7 +3,7 @@
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
 **Version:** 1.9 Candidate
 
-> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind inzwischen versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. v1.9 bleibt Candidate, bis der Branding-Regressionstest und die noch offenen Azure-DevOps-Runtime-Schritte einschließlich des korrigierten Self-Hosting-Dry-Runs erfolgreich verifiziert wurden.
+> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. v1.9 bleibt Candidate, bis Branding-Regressionstest, vollständiger Branding-Apply inklusive Marker-Verifikation und die noch offenen Self-Hosting-/WIF-Runtime-Schritte erfolgreich verifiziert wurden.
 
 ## 1. Core
 
@@ -404,9 +404,9 @@ Der Bootstrap fragt die Service-Endpoint-Type-Metadaten der Zielorganisation ab 
 
 Unbekannte erforderliche Inputs führen zu Fail Closed.
 
-### Erster Runtime-Test 13.08.2026
+### Runtime-Teststand 13.08.2026
 
-Der erste reale lokale Dependency-Dry-Run hat bereits erfolgreich bestätigt:
+Die lokalen Self-Hosting-Tests haben schrittweise folgende Punkte real bestätigt:
 
 ```text
 Azure CLI verfügbar
@@ -414,19 +414,48 @@ Azure-DevOps-CLI-Erweiterung verfügbar
 Organisationsprofil / Ziel-Tenant erkannt
 lokale Azure-Anmeldung im Plattform-Tenant
 Azure-DevOps-Zugriff verifiziert
+Core-Bootstrap-Aufruf funktioniert
+alle vier Core-Projekte vorhanden
+alle erwarteten Core-Repositories vorhanden
+lokaler PlatformBootstrap Working Tree sauber
+Azure 00-Platform/PlatformBootstrap main == lokaler committed HEAD
+fehlende Zielidentität sp-bsse-platform-bootstrap-azdo korrekt als PLAN erkannt
+Basic + 00-Platform/Readers korrekt als PLAN erkannt
+Create new projects = Allow korrekt als PLAN erkannt
+Service Connection / FIC / Pipeline-Autorisierung als nachgelagerte PLAN-Abhängigkeiten erkannt
 ```
 
-Der Lauf stoppte anschließend vor der Core-Verarbeitung an einer fehlerhaften internen PowerShell-Parameterübergabe. Die Ursache war Array-Splatting für benannte Parameter bei `.ps1`-Aufrufen. Diese Fehlerklasse ist in `main` code-seitig auf Hashtable-Splatting korrigiert worden.
-
-Betroffen und korrigiert:
+Während dieser Testfolge wurden zwei PowerShell-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
 
 ```text
-Initialize-BSSEPlatformDependencies.ps1
-Start-BSSECustomerOnboarding.ps1
-pipelines/customer-onboarding.yml
+benannte Parameter bei internen .ps1-Aufrufen
+→ Hashtable-Splatting statt String-Array-Splatting
+
+0/1-Treffer aus ConvertFrom-Json + Where-Object unter StrictMode
+→ Ergebnis explizit als Array materialisieren
 ```
 
-Der korrigierte Dependency-Dry-Run ist erneut auszuführen. Aus dem ersten Lauf wird ausdrücklich keine erfolgreiche Entra-/WIF-/Service-Connection-/Project-Branding-Runtime-Verifikation abgeleitet.
+Der erste reale `-Apply` erreichte anschließend den Project-Branding-Schritt für `00-Platform`:
+
+```text
+[SET] Project avatar 00-Platform <- assets/project-icons/00-platform.png
+Azure DevOps Antwort: HTTP 204
+```
+
+Die Microsoft-REST-Referenz dokumentiert für `Set Project Avatar` HTTP 200 als Erfolg; die reale BSSE-CloudOps-Organisation lieferte bei diesem erfolgreichen PUT HTTP 204. Der bisherige Code akzeptierte ausschließlich HTTP 200 und blockierte deshalb vor dem Marker-Write.
+
+Code-seitig ist in `main` nun festgelegt:
+
+```text
+Avatar PUT HTTP 200 oder 204
+→ als erfolgreicher API-Schritt akzeptieren
+→ anschließend SHA-256-Marker PATCH
+→ Marker GET
+→ exakten Hash verifizieren
+→ erst dann Branding-Sollzustand als verifiziert behandeln
+```
+
+Der bisherige Apply wurde vor der Entra-/WIF-Provisionierung abgebrochen. Aus ihm wird daher ausdrücklich noch **keine** erfolgreiche Entra-SP-, Entitlement-, ACL-, Service-Connection-, FIC- oder Pipeline-Autorisierungs-Verifikation abgeleitet.
 
 ## 11. Customer-Onboarding / Dual Runtime
 
@@ -601,10 +630,12 @@ Asset-Mapping
 → Projekt / Project-ID
 → bestehender Hash-Marker
 → bei Bedarf Avatar PUT
-→ HTTP 200
+→ HTTP 200 oder 204
 → Hash-Marker PATCH
 → Hash-Marker GET / exakte Verifikation
 ```
+
+Die offizielle API-Dokumentation nennt für `Set Project Avatar` HTTP 200. Der reale BSSE-CloudOps-Apply lieferte am 13.08.2026 HTTP 204. PlatformBootstrap akzeptiert daher explizit beide erfolgreichen Antworten; eine erfolgreiche HTTP-Antwort allein genügt jedoch nicht für den verwalteten Sollzustand, da anschließend weiterhin der SHA-256-Marker geschrieben und exakt gelesen werden muss.
 
 Regressionstest:
 
@@ -637,36 +668,51 @@ docs/Project-Branding.md
 - zentrale Branding-Funktion und Projekt-Mapping,
 - Asset-/PNG-/SHA-256-Validierung,
 - offizielle Project-Avatar-REST-Integration,
+- Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den real beobachteten HTTP-204-Erfolg,
 - idempotente Project-Property-Markerstrategie,
 - Core-/Customer-Provisionierungsintegration des Brandings,
 - Branding-Asset-/Mapping-Regressionstest,
 - fünf freigegebene Branding-PNGs unter `assets/project-icons/`,
 - README-/Techniker-/Branding-Dokumentation,
-- sichere benannte Parameterübergabe zwischen Bootstrap-Skripten per Hashtable-Splatting in Initializer, lokalem Frontend und Customer-Onboarding-Pipeline.
+- sichere benannte Parameterübergabe zwischen Bootstrap-Skripten per Hashtable-Splatting in Initializer, lokalem Frontend und Customer-Onboarding-Pipeline,
+- robuste Array-Materialisierung für Entra-/Graph-Identitätssuchen unter StrictMode.
 
 ### Bereits runtime-verifiziert
 
-Der erste reale lokale Self-Hosting-Dry-Run hat folgende Voraussetzungen bestätigt:
+Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 
 - Azure CLI gefunden,
 - Azure-DevOps-CLI-Erweiterung verfügbar,
 - Organisationsprofil / Ziel-Tenant korrekt erkannt,
 - lokale Azure-Anmeldung im erwarteten Plattform-Tenant,
-- Azure-DevOps-Zugriff erfolgreich verifiziert.
+- Azure-DevOps-Zugriff erfolgreich verifiziert,
+- Core-Bootstrap-Verarbeitung nach der Splatting-Korrektur funktioniert,
+- `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` vorhanden,
+- erwartete Core-Repositories vorhanden,
+- lokaler PlatformBootstrap-Working-Tree sauber,
+- Azure `00-Platform/PlatformBootstrap` `main` stimmt mit lokalem committed HEAD überein,
+- Zielidentität `sp-bsse-platform-bootstrap-azdo` ist noch nicht vorhanden und wird korrekt als PLAN erkannt,
+- vollständiger Dependency-Dry-Run erreicht den geplanten Self-Hosting-Zustand ohne Exception/BLOCKED,
+- realer Project-Avatar-PUT für `00-Platform` wurde erreicht,
+- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204.
 
 ### Für v1.9 noch offen
 
-- `tests/Test-BSSEProjectBranding.ps1` gegen die jetzt versionierten Git-Dateien ausführen,
-- korrigierten `Initialize-BSSEPlatformDependencies.ps1` erneut als Dry Run ausführen und den vollständigen Plan prüfen,
-- erst nach sauberem Dry Run den explizit freigegebenen Dependency-Apply durchführen,
-- anschließend Branding- und Self-Hosting-Stand anhand der realen Azure-DevOps-Ergebnisse verifizieren,
+- `tests/Test-BSSEProjectBranding.ps1` gegen die versionierten Git-Dateien ausführen,
+- den korrigierten Branding-Apply erneut ausführen,
+- SHA-256-Marker für `00-Platform` per Project Properties schreiben und per GET exakt verifizieren,
+- Branding für `10-Automation`, `20-IaC` und `99-LAB` vollständig anwenden und verifizieren,
+- danach die Entra-/Azure-DevOps-Identität, Entitlement und `Create new projects`-ACL real erzeugen/verifizieren,
+- WIF-Service-Connection `sc-platform-bootstrap-azdo` anhand der real gelieferten Endpoint-Type-Metadaten erzeugen/verifizieren,
+- federated credential und pipeline-spezifische Service-Connection-Autorisierung erzeugen/verifizieren,
+- abschließenden Dependency-Dry-Run ohne PLAN/BLOCKED durchführen,
+- tatsächliche Anzeige der Icons in der Azure-DevOps-UI bestätigen,
 - erst danach v1.9 als verifiziert markieren.
 
 ### Noch nicht runtime-verifiziert
 
 Bis zum weiteren echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut bestätigt:
 
-- Core-Verarbeitung nach dem korrigierten internen Script-Aufruf,
 - reale Entra-App/SP-Erstellung im BSSE-Tenant,
 - reales Service-Principal-Entitlement in BSSE-CloudOps,
 - tatsächliche `Create new projects`-ACL-Zuweisung,
@@ -676,10 +722,10 @@ Bis zum weiteren echten Erstinstallations-/Runtime-Test sind insbesondere nicht 
 - pipeline-spezifische Service-Connection-Autorisierung,
 - WIF-Pipeline-Authentifizierung,
 - Git-Push nach `CustomerConfiguration`,
-- realer Project-Avatar-PUT für Core-/Customer-Projekte,
 - reale Project-Property-Marker-Schreib-/Leseverifikation,
+- vollständiger Branding-Apply für alle Core-Projekte,
 - tatsächliche Anzeige der Icons in der Azure-DevOps-UI,
-- realer Apply-/Post-Apply-Idempotenzlauf.
+- realer vollständiger Apply-/Post-Apply-Idempotenzlauf.
 
 ## 16. Separater IaC-Techniker-/Deployment-Weg
 
