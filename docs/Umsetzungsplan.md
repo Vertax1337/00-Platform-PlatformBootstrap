@@ -3,7 +3,7 @@
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
 **Version:** 1.9 Candidate
 
-> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. v1.9 bleibt Candidate, bis Branding-Regressionstest, vollständiger Branding-Apply inklusive Marker-Verifikation und die noch offenen Self-Hosting-/WIF-Runtime-Schritte erfolgreich verifiziert wurden.
+> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. Der reale Core-Branding-Apply inklusive SHA-256-Marker-Verifikation ist inzwischen für `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` bestätigt und ein Folge-Apply erkennt alle vier Zustände idempotent als `EXISTS`. v1.9 bleibt Candidate, bis Branding-Regressionstest, Collection-ACL-/WIF-Runtime-Schritte und der abschließende idempotente Dependency-Verify erfolgreich verifiziert wurden.
 
 ## 1. Core
 
@@ -417,15 +417,17 @@ Azure-DevOps-Zugriff verifiziert
 Core-Bootstrap-Aufruf funktioniert
 alle vier Core-Projekte vorhanden
 alle erwarteten Core-Repositories vorhanden
+verwaltetes Branding für 00-Platform, 10-Automation, 20-IaC und 99-LAB angewendet
+SHA-256-Marker für alle vier Core-Projekte geschrieben und gelesen
+Folge-Apply erkennt alle vier Branding-Zustände als EXISTS
 lokaler PlatformBootstrap Working Tree sauber
 Azure 00-Platform/PlatformBootstrap main == lokaler committed HEAD
-fehlende Zielidentität sp-bsse-platform-bootstrap-azdo korrekt als PLAN erkannt
-Basic + 00-Platform/Readers korrekt als PLAN erkannt
-Create new projects = Allow korrekt als PLAN erkannt
-Service Connection / FIC / Pipeline-Autorisierung als nachgelagerte PLAN-Abhängigkeiten erkannt
+sp-bsse-platform-bootstrap-azdo real als passwordless Entra App/Service Principal erstellt
+Azure DevOps Entitlement real erstellt
+Basic + 00-Platform/Readers anschließend als EXISTS verifiziert
 ```
 
-Während dieser Testfolge wurden drei PowerShell-/REST-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
+Während dieser Testfolge wurden mehrere PowerShell-/REST-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
 
 ```text
 benannte Parameter bei internen .ps1-Aufrufen
@@ -438,27 +440,29 @@ JsonPatchDocument mit genau einer Operation
 → nicht über die PowerShell-Pipeline zu ConvertTo-Json senden
 → Array über ConvertTo-Json -InputObject serialisieren
 → vor dem REST-Aufruf zusätzlich sicherstellen, dass der Body mit '[' beginnt
+
+az devops security permission list --output json
+→ nicht als flache Tokenliste mit effectiveAllow/effectiveDeny behandeln
+→ ACL.acesDictionary auflösen
+→ AccessControlEntry.extendedInfo.effectiveAllow/effectiveDeny normalisieren
+→ unbekanntes/mehrdeutiges Format weiterhin Fail Closed
 ```
 
-Der erste reale `-Apply` erreichte den Project-Branding-Schritt für `00-Platform`:
+Beim Entra→Azure-DevOps-Übergang wurde außerdem real ein transienter Materialisierungszustand beobachtet:
 
 ```text
-[SET] Project avatar 00-Platform <- assets/project-icons/00-platform.png
-Azure DevOps Antwort: HTTP 204
+unmittelbar nach Entra-SP-Erstellung
+→ ServicePrincipalEntitlements POST
+→ VS403283: Could not add user '<object-id>' at this time.
+
+unveränderter Wiederholungslauf nach kurzer Wartezeit
+→ Entitlement erfolgreich
+→ Basic + 00-Platform/Readers verifiziert
 ```
 
-Die Microsoft-REST-Referenz dokumentiert für `Set Project Avatar` HTTP 200 als Erfolg; die reale BSSE-CloudOps-Organisation lieferte bei diesem erfolgreichen PUT HTTP 204. PlatformBootstrap akzeptiert deshalb HTTP 200 und HTTP 204 als erfolgreiche Avatar-PUT-Antworten.
+Damit ist für diesen konkreten Lauf bestätigt, dass `VS403283` transient durch die frisch erzeugte Identität auftreten kann. Der Bootstrap besitzt dafür nun einen begrenzten Retry ausschließlich auf diesen erkannten Fehlerfall; persistente oder andere Entitlement-Fehler bleiben Fail Closed.
 
-Der zweite reale `-Apply` erreichte dadurch erstmals den nachgelagerten Project-Property-PATCH für den SHA-256-Marker:
-
-```text
-PATCH /_apis/projects/{projectId}/properties?api-version=7.1-preview.1
-Azure DevOps Antwort: HTTP 500
-```
-
-Die offizielle Project-Properties-API erwartet für diesen PATCH einen `JsonPatchDocument` als JSON-Array (`[ { ... } ]`). Der bisherige PowerShell-Code baute zwar ein ein-elementiges Array, leitete es anschließend aber per Pipeline an `ConvertTo-Json` weiter. PowerShell enumeriert Arrays in Pipelines elementweise; dadurch wurde die einzelne Patch-Operation als JSON-Objekt statt als JSON-Array serialisiert. Dies ist code-seitig korrigiert; die erfolgreiche Marker-Schreib-/Leseverifikation steht noch aus.
-
-Der bisherige Apply wurde erneut vor der Entra-/WIF-Provisionierung abgebrochen. Aus ihm wird daher ausdrücklich noch **keine** erfolgreiche Entra-SP-, Entitlement-, ACL-, Service-Connection-, FIC- oder Pipeline-Autorisierungs-Verifikation abgeleitet.
+Der nächste reale Blocker trat bei der Collection-ACL-Ermittlung auf. Die bisherige Implementierung griff auf `effectiveAllow` direkt am ACL-Tokenobjekt zu. Die dokumentierte/real gelieferte Azure-DevOps-CLI-Struktur verwendet dagegen `acesDictionary` und `AccessControlEntry.extendedInfo`. Dieser Parser ist code-seitig korrigiert, die tatsächliche `Create new projects`-Vergabe und Post-Write-Verifikation stehen noch aus.
 
 ## 11. Customer-Onboarding / Dual Runtime
 
@@ -643,6 +647,8 @@ Die offizielle API-Dokumentation nennt für `Set Project Avatar` HTTP 200. Der r
 
 Der Project-Properties-PATCH erwartet `application/json-patch+json` und einen JSON-Array-Body. PlatformBootstrap serialisiert den ein-elementigen Patch deshalb über `ConvertTo-Json -InputObject` und prüft vor dem Request zusätzlich die Arrayform.
 
+Der reale Apply hat diesen vollständigen Ablauf inzwischen für alle vier Core-Projekte erfolgreich durchlaufen. Der anschließende Apply meldet für alle vier Avatare `EXISTS`, da der verwaltete SHA-256-Marker dem jeweiligen Asset entspricht. Damit sind Avatar-PUT, Marker-PATCH, Marker-GET und die interne Branding-Idempotenz für diese vier Core-Projekte runtime-verifiziert. Die tatsächliche visuelle Darstellung in der Azure-DevOps-UI bleibt separat zu bestätigen.
+
 Regressionstest:
 
 ```text
@@ -682,7 +688,10 @@ docs/Project-Branding.md
 - fünf freigegebene Branding-PNGs unter `assets/project-icons/`,
 - README-/Techniker-/Branding-Dokumentation,
 - sichere benannte Parameterübergabe zwischen Bootstrap-Skripten per Hashtable-Splatting in Initializer, lokalem Frontend und Customer-Onboarding-Pipeline,
-- robuste Array-Materialisierung für Entra-/Graph-Identitätssuchen unter StrictMode.
+- robuste Array-Materialisierung für Entra-/Graph-Identitätssuchen unter StrictMode,
+- begrenzter Retry für den real bestätigten transienten Azure-DevOps-Entitlementfehler `VS403283` unmittelbar nach Entra-SP-Erstellung,
+- Normalisierung von `az devops security permission list` aus `acesDictionary` / `AccessControlEntry.extendedInfo` auf `EffectiveAllow` und `EffectiveDeny`,
+- ACL-Ausgabeformat/ACE-Zuordnung bleibt bei unbekanntem oder mehrdeutigem Zustand Fail Closed.
 
 ### Bereits runtime-verifiziert
 
@@ -696,44 +705,46 @@ Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 - Core-Bootstrap-Verarbeitung nach der Splatting-Korrektur funktioniert,
 - `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` vorhanden,
 - erwartete Core-Repositories vorhanden,
+- Project-Avatar-PUT für alle vier Core-Projekte erfolgreich ausgeführt,
+- reale Azure-DevOps-Antwort auf Avatar-PUT: HTTP 204,
+- Project-Property-Marker für alle vier Core-Projekte erfolgreich geschrieben und per GET exakt verifiziert,
+- Folge-Apply erkennt alle vier Branding-Zustände als `EXISTS`,
 - lokaler PlatformBootstrap-Working-Tree sauber,
 - Azure `00-Platform/PlatformBootstrap` `main` stimmt mit lokalem committed HEAD überein,
-- Zielidentität `sp-bsse-platform-bootstrap-azdo` ist noch nicht vorhanden und wird korrekt als PLAN erkannt,
-- vollständiger Dependency-Dry-Run erreicht den geplanten Self-Hosting-Zustand ohne Exception/BLOCKED,
-- realer Project-Avatar-PUT für `00-Platform` wurde erreicht,
-- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204,
-- zweiter Apply erreichte den Project-Property-PATCH für den Branding-Marker; Azure DevOps antwortete dort mit HTTP 500.
+- `sp-bsse-platform-bootstrap-azdo` real als passwordless Entra App/Service Principal erstellt,
+- unmittelbar anschließender erster Entitlementversuch lieferte `VS403283`,
+- unveränderter späterer Apply konnte das Azure-DevOps-Service-Principal-Entitlement erfolgreich erstellen,
+- `Basic + 00-Platform/Readers` anschließend real aus Azure DevOps gelesen und als `EXISTS` verifiziert,
+- Collection-Security-Namespace/CREATE_PROJECTS-Pfad wurde erreicht; der Lauf stoppte dort am inzwischen korrigierten ACL-Parser.
 
 ### Für v1.9 noch offen
 
 - `tests/Test-BSSEProjectBranding.ps1` gegen die versionierten Git-Dateien ausführen,
-- den nach JSON-Patch-Korrektur aktualisierten Branding-Apply erneut ausführen,
-- SHA-256-Marker für `00-Platform` per Project Properties schreiben und per GET exakt verifizieren,
-- Branding für `10-Automation`, `20-IaC` und `99-LAB` vollständig anwenden und verifizieren,
-- danach die Entra-/Azure-DevOps-Identität, Entitlement und `Create new projects`-ACL real erzeugen/verifizieren,
+- tatsächliche visuelle Anzeige der Core-Projekt-Icons in der Azure-DevOps-UI bestätigen,
+- korrigierte ACL-Normalisierung im realen Lauf erneut prüfen,
+- `Create new projects = Allow` für `sp-bsse-platform-bootstrap-azdo` real vergeben und Post-Write verifizieren,
+- den neuen begrenzten `VS403283`-Retry bei einem zukünftigen frischen Bootstrap als Erstlaufpfad runtime-verifizieren; der zugrunde liegende transiente Zustand selbst ist bereits bestätigt,
 - WIF-Service-Connection `sc-platform-bootstrap-azdo` anhand der real gelieferten Endpoint-Type-Metadaten erzeugen/verifizieren,
 - federated credential und pipeline-spezifische Service-Connection-Autorisierung erzeugen/verifizieren,
-- abschließenden Dependency-Dry-Run ohne PLAN/BLOCKED durchführen,
-- tatsächliche Anzeige der Icons in der Azure-DevOps-UI bestätigen,
-- erst danach v1.9 als verifiziert markieren.
+- abschließenden Dependency-Dry-Run ohne `PLAN`/`BLOCKED` durchführen,
+- WIF-Pipeline-Authentifizierung mit `Customer-Onboarding` real ausführen,
+- erst danach v1.9 als vollständig verifiziert markieren.
 
 ### Noch nicht runtime-verifiziert
 
 Bis zum weiteren echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut bestätigt:
 
-- reale Entra-App/SP-Erstellung im BSSE-Tenant,
-- reales Service-Principal-Entitlement in BSSE-CloudOps,
-- tatsächliche `Create new projects`-ACL-Zuweisung,
+- tatsächliche `Create new projects`-ACL-Zuweisung und deren Post-Write-Verifikation,
+- korrigierte ACL-Normalisierung gegen die konkrete BSSE-CloudOps-Ausgabe,
+- Retry-Implementierung für `VS403283` innerhalb eines einzelnen frischen Erstlaufs,
 - tatsächlich gelieferte Endpoint-Type-Metadaten für die Azure-DevOps-WIF-Service-Connection,
 - reale Erstellung von `sc-platform-bootstrap-azdo`,
 - reales federated credential,
 - pipeline-spezifische Service-Connection-Autorisierung,
 - WIF-Pipeline-Authentifizierung,
 - Git-Push nach `CustomerConfiguration`,
-- erfolgreiche Project-Property-Marker-Schreib-/Leseverifikation nach der JSON-Patch-Korrektur,
-- vollständiger Branding-Apply für alle Core-Projekte,
-- tatsächliche Anzeige der Icons in der Azure-DevOps-UI,
-- realer vollständiger Apply-/Post-Apply-Idempotenzlauf.
+- tatsächliche visuelle Anzeige der Icons in der Azure-DevOps-UI,
+- realer vollständiger Apply-/Post-Apply-Idempotenzlauf ohne verbleibenden `PLAN`/`BLOCKED`.
 
 ## 16. Separater IaC-Techniker-/Deployment-Weg
 
