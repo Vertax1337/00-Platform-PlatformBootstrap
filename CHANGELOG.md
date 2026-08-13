@@ -12,16 +12,18 @@
 - Asset-Validierung prüft Mapping, Existenz, PNG-Signatur und SHA-256
 - idempotenter Sollzustand über Project Property `BSSE.PlatformBootstrap.ProjectAvatarSha256`
 - Avatar wird nur bei fehlendem/abweichendem verwaltetem Hash-Marker neu gesetzt
-- Hash-Marker wird erst nach bestätigtem Avatar-API-HTTP-200 geschrieben und anschließend per Project-Properties-GET verifiziert
+- Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den im realen BSSE-CloudOps-Lauf beobachteten HTTP-204-Erfolg
+- Hash-Marker wird erst nach erfolgreichem Avatar-PUT geschrieben und anschließend per Project-Properties-GET verifiziert
+- Project-Properties-PATCH serialisiert ein ein-elementiges `JsonPatchDocument` garantiert als JSON-Array über `ConvertTo-Json -InputObject`; die Arrayform wird vor dem Request zusätzlich geprüft
 - fehlende Assets, fehlende Project-ID, Berechtigungs-/REST-Fehler oder nicht verifizierbarer Marker führen Fail Closed zu `BLOCKED`/Fehler statt Warning-only
 - bekannte API-Grenze dokumentiert: manuelle Avatar-Drift außerhalb des Bootstraps ist bei unverändertem Marker mit der dokumentierten Core-API nicht zuverlässig lesbar
 - neuer Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert Mapping, Original-Dateigrößen und SHA-256 der fünf freigegebenen ZIP-Assets
 - neue Dokumentation `docs/Project-Branding.md`
-- erster realer Self-Hosting-Dry-Run am 13.08.2026: Azure CLI, Azure-DevOps-CLI-Erweiterung, Organisationsprofil/Tenant, Azure-Anmeldung und Azure-DevOps-Zugriff wurden lokal erfolgreich erreicht; der Lauf stoppte vor der Core-Verarbeitung an einem Runtime-Fehler der internen PowerShell-Parameterübergabe
-- gefundene Fehlerklasse korrigiert: benannte Parameter werden bei internen `.ps1`-Aufrufen nun per Hashtable-Splatting statt über String-Arrays übergeben
-- korrigiert wurden `Initialize-BSSEPlatformDependencies.ps1`, `Start-BSSECustomerOnboarding.ps1` und `pipelines/customer-onboarding.yml`
-- der korrigierte Self-Hosting-Dry-Run ist noch erneut auszuführen; daraus folgt ausdrücklich noch keine erfolgreiche WIF-/Service-Connection-/Avatar-Runtime-Verifikation
-- reale Azure-DevOps-Avatar-/Property-Runtime-Verifikation bleibt bis zum entsprechenden echten Lauf ausdrücklich offen
+- erster realer Self-Hosting-Dry-Run am 13.08.2026 bestätigte Azure CLI, Azure-DevOps-CLI-Erweiterung, Organisationsprofil/Tenant, Azure-Anmeldung und Azure-DevOps-Zugriff; dabei wurde fehlerhaftes Array-Splatting bei internen `.ps1`-Aufrufen entdeckt und auf Hashtable-Splatting korrigiert
+- weiterer Dry Run bestätigte Core-Topologie, sauberen PlatformBootstrap-Source-of-Truth und den geplanten fehlenden Self-Hosting-Identitätszustand; ein StrictMode-Fehler bei 0/1-Treffer-Cardinality wurde durch explizite Array-Materialisierung korrigiert
+- erster realer `-Apply` erreichte den Avatar-PUT für `00-Platform`; Azure DevOps antwortete mit HTTP 204, woraufhin die Erfolgsprüfung auf HTTP 200/204 korrigiert wurde
+- zweiter realer `-Apply` erreichte den SHA-256-Marker-PATCH; Azure DevOps antwortete mit HTTP 500, weil das ein-elementige JSON-Patch-Array durch PowerShell-Pipeline-Enumeration als einzelnes JSON-Objekt serialisiert wurde; dies ist code-seitig korrigiert
+- Marker-PATCH/GET nach der JSON-Patch-Korrektur, vollständiges Core-Branding, Entra-/WIF-Provisionierung und abschließende Idempotenz-Verifikation bleiben runtime-seitig offen
 
 ## v1.8
 
