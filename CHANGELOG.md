@@ -23,7 +23,13 @@
 - weiterer Dry Run bestätigte Core-Topologie, sauberen PlatformBootstrap-Source-of-Truth und den geplanten fehlenden Self-Hosting-Identitätszustand; ein StrictMode-Fehler bei 0/1-Treffer-Cardinality wurde durch explizite Array-Materialisierung korrigiert
 - erster realer `-Apply` erreichte den Avatar-PUT für `00-Platform`; Azure DevOps antwortete mit HTTP 204, woraufhin die Erfolgsprüfung auf HTTP 200/204 korrigiert wurde
 - zweiter realer `-Apply` erreichte den SHA-256-Marker-PATCH; Azure DevOps antwortete mit HTTP 500, weil das ein-elementige JSON-Patch-Array durch PowerShell-Pipeline-Enumeration als einzelnes JSON-Objekt serialisiert wurde; dies ist code-seitig korrigiert
-- Marker-PATCH/GET nach der JSON-Patch-Korrektur, vollständiges Core-Branding, Entra-/WIF-Provisionierung und abschließende Idempotenz-Verifikation bleiben runtime-seitig offen
+- nach der JSON-Patch-Korrektur wurden Project Avatar + SHA-256-Marker für `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` real erfolgreich angewendet und verifiziert; ein Folge-Apply erkennt alle vier Branding-Zustände idempotent als `EXISTS`
+- `sp-bsse-platform-bootstrap-azdo` wurde real als passwordless Entra App/Service Principal erstellt
+- der unmittelbar anschließende erste ServicePrincipalEntitlements-POST lieferte transient `VS403283`; ein unveränderter Wiederholungslauf nach kurzer Wartezeit konnte das Entitlement erfolgreich anlegen und `Basic + 00-Platform/Readers` anschließend als `EXISTS` verifizieren
+- für genau diesen real bestätigten transienten `VS403283`-Materialisierungsfall ist ein begrenzter Retry implementiert; andere/persistente Entitlement-Fehler bleiben Fail Closed
+- der nächste reale Lauf erreichte die Collection-ACL-Ermittlung und zeigte, dass `az devops security permission list --output json` `effectiveAllow/effectiveDeny` nicht flach am Tokenobjekt liefert, sondern unter `acesDictionary` / `AccessControlEntry.extendedInfo`
+- die Collection-ACL-Auswertung normalisiert nun das dokumentierte verschachtelte Format auf `EffectiveAllow`/`EffectiveDeny`, berücksichtigt effektive Denies und blockiert unbekannte oder mehrdeutige ACE-Zuordnungen
+- Runtime-Retest der korrigierten ACL-Auswertung, reale `Create new projects`-Vergabe, WIF-Service-Connection/FIC/Pipeline-Autorisierung und abschließende Idempotenz-Verifikation bleiben offen
 
 ## v1.8
 
