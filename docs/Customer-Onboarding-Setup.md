@@ -161,7 +161,13 @@ Der reale Dry Run am 13.08.2026 hat die korrigierte ACL-Normalisierung erfolgrei
 [OK] Create new projects für sp-bsse-platform-bootstrap-azdo verifiziert.
 ```
 
-Damit sind die **lesende ACL-Ermittlung, die mutierende Vergabe und die Post-Write-Verifikation von `Create new projects = Allow` runtime-verifiziert**.
+Ein weiterer Apply erkennt denselben Zustand inzwischen idempotent als:
+
+```text
+[EXISTS] Collection permission: Create new projects = Allow
+```
+
+Damit sind die **lesende ACL-Ermittlung, die mutierende Vergabe, die Post-Write-Verifikation und die Idempotenz von `Create new projects = Allow` runtime-verifiziert**.
 
 ### 6. Azure-DevOps-WIF-Service-Connection
 
@@ -188,15 +194,47 @@ Der reale Dry Run am 13.08.2026 konnte die von `BSSE-CloudOps` gelieferten Endpo
 [PLAN] Create federated credential after Service Connection yields issuer/subject
 ```
 
-Der anschließende reale Apply erreichte erstmals `New-BSSEServiceEndpointConfiguration`, brach dort jedoch vor der Service-Connection-Erstellung an einer StrictMode-Annahme ab:
+Der erste reale Apply auf diesem Pfad erreichte `New-BSSEServiceEndpointConfiguration`, brach dort jedoch vor der Service-Connection-Erstellung an einer StrictMode-Annahme ab:
 
 ```text
 The property 'isRequired' cannot be found on this object.
 ```
 
-Die offizielle Azure-DevOps-REST-Struktur erlaubt `InputDescriptor.validation`, ohne dass `isRequired` zwingend enthalten sein muss; Microsoft zeigt selbst optionale Deskriptoren mit `validation.dataType`/`maxLength` ohne `isRequired`. Der Bootstrap prüft daher nun zuerst, ob `validation` und die Property `isRequired` tatsächlich vorhanden sind. Nur ein explizites `isRequired: true` wird als Pflichtfeld behandelt. Dadurch bleiben unbekannte Pflichtinputs weiterhin Fail Closed, während optionale Metadaten unter StrictMode nicht mehr fehlschlagen.
+Die offizielle Azure-DevOps-REST-Struktur erlaubt `InputDescriptor.validation`, ohne dass `isRequired` zwingend enthalten sein muss. Der Bootstrap prüft daher nun zuerst, ob `validation` und die Property `isRequired` tatsächlich vorhanden sind. Nur ein explizites `isRequired: true` wird als Pflichtfeld behandelt. Dadurch bleiben unbekannte Pflichtinputs weiterhin Fail Closed, während optionale Metadaten unter StrictMode nicht mehr fehlschlagen.
 
-Die reale Erstellung von `sc-platform-bootstrap-azdo` und die daraus gelieferten konkreten `issuer`-/`subject`-Werte bleiben bis zum nächsten Apply offen.
+Der darauf folgende reale Apply erreichte anschließend erstmals den tatsächlichen CLI-Create-Aufruf:
+
+```text
+[CREATE] Service Connection sc-platform-bootstrap-azdo
+```
+
+Azure DevOps lehnte die Konfiguration dabei mit folgender konkreter Validierung ab:
+
+```text
+Following fields in the service connection are not expected: creationMode.
+Only fields that are defined in the service connection's contribution type as inputs can be specified.
+```
+
+Damit ist runtime-verifiziert, dass der reale `Azure DevOps`-/WIF-Endpoint-Typ in `BSSE-CloudOps` **kein** allgemeines `creationMode`-Input definiert. Die bisherige Konfiguration setzte `data.creationMode = Manual` trotzdem pauschal und verletzte damit gerade das metadata-driven Zielmodell.
+
+Korrigiert gilt jetzt:
+
+```text
+ServiceEndpoint.data
+→ startet leer
+→ erhält ausschließlich Inputs aus EndpointType.inputDescriptors
+
+Authorization.parameters
+→ wird anhand des ausgewählten WIF-Schemas befüllt
+
+creationMode
+→ wird nur gesetzt, wenn Azure DevOps selbst einen Descriptor mit id=creationMode liefert
+
+unbekannter explizit erforderlicher Descriptor
+→ BLOCKED / Fail Closed
+```
+
+Damit wird kein typspezifisches `data`-Feld mehr unabhängig von den real gelieferten Endpoint-Metadaten erfunden. Die reale Erstellung von `sc-platform-bootstrap-azdo` und die daraus gelieferten konkreten `issuer`-/`subject`-Werte bleiben bis zum nächsten Apply offen.
 
 ### 7. Federated Credential
 
@@ -310,10 +348,11 @@ Die bisherigen Erstinitialisierungs-/Apply-/Dry-Run-Läufe in `BSSE-CloudOps` ha
 - ein späterer unveränderter Wiederholungslauf konnte das Entitlement real erzeugen,
 - `Basic + 00-Platform/Readers` wurde anschließend aus Azure DevOps gelesen und als `EXISTS` bestätigt,
 - die korrigierte Collection-ACL-Normalisierung wurde gegen die reale `BSSE-CloudOps`-Ausgabe erfolgreich ausgeführt,
-- `Create new projects = Allow` wurde real vergeben und unmittelbar danach erfolgreich verifiziert,
+- `Create new projects = Allow` wurde real vergeben, unmittelbar danach erfolgreich verifiziert und in einem späteren Apply als `EXISTS` wiedererkannt,
 - die realen Azure-DevOps-Service-Endpoint-Type-Metadaten konnten für `Azure DevOps` + `WorkloadIdentityFederation` eindeutig ausgewertet werden,
 - der vollständige vorherige Dependency-Dry-Run endete erfolgreich mit `[OK] Platform dependency dry run / verification completed.`,
-- der nachfolgende Apply erreichte die tatsächliche WIF-Service-Endpoint-Konfiguration.
+- der nachfolgende Apply erreichte die tatsächliche WIF-Service-Endpoint-Konfiguration,
+- der nächste Apply erreichte den realen Service-Connection-Create-Aufruf und bestätigte, dass `creationMode` im aktuellen Endpoint-Typ kein erlaubtes Input ist.
 
 ### Code-seitig korrigiert / implementiert
 
@@ -341,13 +380,20 @@ validation vorhanden, isRequired fehlt
 
 validation.isRequired == true
 → unbekannter Input bleibt BLOCKED / Fail Closed
+
+EndpointType.inputDescriptors
+→ nur diese Werte dürfen in ServiceEndpoint.data aufgenommen werden
+
+creationMode
+→ kein pauschales Default-Feld mehr
+→ nur noch bei tatsächlich geliefertem Descriptor
 ```
 
 Zusätzlich ist für den real beobachteten transienten `VS403283`-Materialisierungsfall ein begrenzter Retry implementiert. Die Retry-Implementierung selbst kann erst bei einem zukünftigen frischen Erstlauf innerhalb desselben Prozesses vollständig runtime-verifiziert werden.
 
 ### Noch nicht runtime-verifiziert
 
-- der korrigierte Umgang mit optionalen/missing `isRequired`-Metadaten im nächsten realen Apply,
+- erfolgreicher Service-Connection-Create nach Entfernung des pauschalen `creationMode`,
 - reale Erstellung von `sc-platform-bootstrap-azdo`,
 - die nach Erstellung real gelieferten WIF-`issuer`-/`subject`-Werte,
 - reales federated credential `fic-sc-platform-bootstrap-azdo`,
