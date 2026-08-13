@@ -886,7 +886,10 @@ function New-BSSEServiceEndpointConfiguration {
         if ($null -ne $value) {
             $data[$descriptor.id] = $value
         }
-        elseif ($descriptor.validation -and $descriptor.validation.isRequired) {
+        elseif ($descriptor.PSObject.Properties['validation'] -and
+                $descriptor.validation -and
+                $descriptor.validation.PSObject.Properties['isRequired'] -and
+                [bool]$descriptor.validation.isRequired) {
             throw "Unbekanntes erforderliches Azure-DevOps-Service-Endpoint-Input '$($descriptor.id)'. Fail Closed statt Schema zu raten."
         }
     }
@@ -902,7 +905,10 @@ function New-BSSEServiceEndpointConfiguration {
         if ($null -ne $value) {
             $authParameters[$descriptor.id] = $value
         }
-        elseif ($descriptor.validation -and $descriptor.validation.isRequired) {
+        elseif ($descriptor.PSObject.Properties['validation'] -and
+                $descriptor.validation -and
+                $descriptor.validation.PSObject.Properties['isRequired'] -and
+                [bool]$descriptor.validation.isRequired) {
             throw "Unbekanntes erforderliches WIF-Authorization-Input '$($descriptor.id)'. Fail Closed statt Schema zu raten."
         }
     }
