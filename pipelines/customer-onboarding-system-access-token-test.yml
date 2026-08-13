@@ -1,0 +1,324 @@
+trigger: none
+pr: none
+
+# TEMPORARY E2E TEST HARNESS
+#
+# Productive target remains pipelines/customer-onboarding.yml with the dedicated
+# Azure DevOps WIF service connection sc-platform-bootstrap-azdo.
+#
+# This pipeline exists only while the Azure DevOps (Preview) workloadidentityuser
+# Finish-setup path is blocked in BSSE-CloudOps. It exercises the SAME backend
+# scripts by explicitly mapping the pipeline job token (System.AccessToken).
+# No PAT, client secret, or alternative customer-onboarding backend is introduced.
+
+parameters:
+- name: customerNumber
+  displayName: Customer / Debitor number
+  type: string
+  default: '00000'
+
+- name: customerName
+  displayName: Customer name
+  type: string
+  default: 'Bernd Schneider Software Engineering GmbH'
+
+- name: customerSlug
+  displayName: Customer slug (optional)
+  type: string
+  default: ''
+
+- name: tenantId
+  displayName: Azure Tenant ID (optional)
+  type: string
+  default: 'f9acedfe-a77a-4831-b79c-f010afa6b889'
+
+- name: azureDocumentation
+  displayName: AzureDocumentation
+  type: boolean
+  default: true
+
+- name: opnsenseDocumentation
+  displayName: OPNsenseDocumentation
+  type: boolean
+  default: false
+
+- name: firewalls
+  displayName: Firewalls / sites (comma-separated, optional)
+  type: string
+  default: ''
+
+- name: confirmTemporarySystemAccessToken
+  displayName: I understand this is the temporary System.AccessToken E2E test path
+  type: boolean
+  default: false
+
+pool:
+  vmImage: windows-latest
+
+stages:
+- stage: Validate
+  displayName: Validate input and temporary auth mode
+  jobs:
+  - job: ValidateInput
+    displayName: Validate onboarding parameters
+    steps:
+    - checkout: self
+      clean: true
+
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        if ('${{ parameters.confirmTemporarySystemAccessToken }}' -ne 'True') {
+          throw @'
+This is the temporary System.AccessToken E2E test pipeline.
+Set confirmTemporarySystemAccessToken=true explicitly to run it.
+The productive authentication target remains sc-platform-bootstrap-azdo via WIF.
+'@
+        }
+
+        if ([string]::IsNullOrWhiteSpace('${{ parameters.customerNumber }}')) {
+          throw 'CustomerNumber is required.'
+        }
+
+        if ([string]::IsNullOrWhiteSpace('${{ parameters.customerName }}')) {
+          throw 'CustomerName is required.'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+          $tenant = [guid]::Empty
+          if (-not [guid]::TryParse('${{ parameters.tenantId }}', [ref]$tenant)) {
+            throw 'TenantId is not a valid GUID.'
+          }
+        }
+
+        if ([string]::IsNullOrWhiteSpace($env:SYSTEM_ACCESSTOKEN)) {
+          throw 'System.AccessToken was not mapped into the validation step.'
+        }
+
+        Write-Host '============================================================'
+        Write-Host '[TEMPORARY TEST MODE] Pipeline authentication: System.AccessToken'
+        Write-Host 'Productive target remains Azure DevOps WIF / sc-platform-bootstrap-azdo.'
+        Write-Host '============================================================'
+        Write-Host '[OK] Input validation passed.'
+      displayName: Validate parameters and explicit test opt-in
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        $headers = @{
+          Authorization = "Bearer $env:SYSTEM_ACCESSTOKEN"
+        }
+
+        $uri = "$(System.CollectionUri)_apis/connectionData?connectOptions=1&lastChangeId=-1&lastChangeId64=-1&api-version=7.1-preview.1"
+        $connectionData = Invoke-RestMethod -Method GET -Uri $uri -Headers $headers
+        $identity = $connectionData.authenticatedUser
+
+        Write-Host '=== SYSTEM.ACCESSTOKEN IDENTITY ==='
+        Write-Host "DisplayName: $($identity.providerDisplayName)"
+        Write-Host "CustomName:  $($identity.customDisplayName)"
+        Write-Host "Id:          $($identity.id)"
+        Write-Host "Descriptor:  $($identity.descriptor)"
+        Write-Host '=================================='
+        Write-Host 'Keep these identity fields for the temporary permission review before Apply.'
+      displayName: Identify temporary Build Service token identity
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+- stage: DryRun
+  displayName: Bootstrap dry run
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+  - job: DryRun
+    displayName: Generate onboarding plan
+    steps:
+    - checkout: self
+      clean: true
+
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        $modules = @()
+        if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+        if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+
+        $scriptParameters = @{
+          OrganizationUrl = '$(System.CollectionUri)'
+          CustomerNumber  = '${{ parameters.customerNumber }}'
+          CustomerName    = '${{ parameters.customerName }}'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+          $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+          $scriptParameters.TenantId = '${{ parameters.tenantId }}'
+        }
+
+        if ($modules.Count -gt 0) {
+          $scriptParameters.Modules = @($modules)
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+          $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
+        }
+
+        Write-Host '=== DRY RUN: CUSTOMER BOUNDARY ==='
+        $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters *>&1
+        $boundaryOutput | ForEach-Object { Write-Host $_ }
+
+        Write-Host '=== DRY RUN: CUSTOMERCONFIGURATION ==='
+        $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1
+        $configOutput | ForEach-Object { Write-Host $_ }
+
+        $text = (($boundaryOutput + $configOutput) | Out-String)
+        if ($text -match '\[BLOCKED\]') {
+          throw 'Dry Run contains a BLOCKED state. Apply is not permitted.'
+        }
+
+        $hasChanges = ($text -match '\[PLAN\]')
+        Write-Host "##vso[task.setvariable variable=hasChanges;isOutput=true]$($hasChanges.ToString().ToLowerInvariant())"
+
+        if ($hasChanges) {
+          Write-Host '[PLAN] Changes require review and approval.'
+        }
+        else {
+          Write-Host '[OK] Desired state including CustomerConfiguration is already present. Approval/Apply will be skipped.'
+        }
+      name: DryRunState
+      displayName: Run complete customer onboarding - DRY RUN (System.AccessToken TEST)
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+- stage: Approval
+  displayName: Review dry run
+  dependsOn: DryRun
+  condition: and(succeeded(), eq(dependencies.DryRun.outputs['DryRun.DryRunState.hasChanges'], 'true'))
+  jobs:
+  - job: ManualReview
+    displayName: Technician approval
+    pool: server
+    timeoutInMinutes: 1440
+    steps:
+    - task: ManualValidation@1
+      timeoutInMinutes: 1440
+      inputs:
+        notifyUsers: ''
+        instructions: |
+          TEMPORARY SYSTEM.ACCESSTOKEN E2E TEST MODE.
+          Review the complete Dry Run output and the token identity printed in Validate.
+          Before approval, confirm that the Build Service identity has only the permissions required for this explicit test.
+          Approve only if project, repositories, documentation capabilities, CustomerConfiguration changes and firewall repositories match the intended customer onboarding and no unexpected operation is shown.
+          Productive authentication remains blocked/open until sc-platform-bootstrap-azdo WIF is available.
+        onTimeout: reject
+
+- stage: Apply
+  displayName: Apply onboarding
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - job: Apply
+    displayName: Provision customer and persist configuration
+    steps:
+    - checkout: self
+      clean: true
+
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        $modules = @()
+        if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+        if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+
+        $scriptParameters = @{
+          OrganizationUrl = '$(System.CollectionUri)'
+          CustomerNumber  = '${{ parameters.customerNumber }}'
+          CustomerName    = '${{ parameters.customerName }}'
+          Apply           = $true
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+          $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+          $scriptParameters.TenantId = '${{ parameters.tenantId }}'
+        }
+
+        if ($modules.Count -gt 0) {
+          $scriptParameters.Modules = @($modules)
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+          $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
+        }
+
+        Write-Host '=== APPLY: CUSTOMER BOUNDARY ==='
+        & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters
+
+        Write-Host '=== APPLY: CUSTOMERCONFIGURATION ==='
+        & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters
+      displayName: Run complete customer onboarding - APPLY (System.AccessToken TEST)
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+- stage: Verify
+  displayName: Verify idempotency
+  dependsOn: Apply
+  condition: succeeded()
+  jobs:
+  - job: Verify
+    displayName: Re-run complete dry run and verify no changes
+    steps:
+    - checkout: self
+      clean: true
+
+    - pwsh: |
+        $ErrorActionPreference = 'Stop'
+
+        $modules = @()
+        if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+        if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+
+        $scriptParameters = @{
+          OrganizationUrl = '$(System.CollectionUri)'
+          CustomerNumber  = '${{ parameters.customerNumber }}'
+          CustomerName    = '${{ parameters.customerName }}'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+          $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+          $scriptParameters.TenantId = '${{ parameters.tenantId }}'
+        }
+
+        if ($modules.Count -gt 0) {
+          $scriptParameters.Modules = @($modules)
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+          $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
+        }
+
+        Write-Host '=== VERIFY: CUSTOMER BOUNDARY ==='
+        $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters *>&1
+        $boundaryOutput | ForEach-Object { Write-Host $_ }
+
+        Write-Host '=== VERIFY: CUSTOMERCONFIGURATION ==='
+        $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1
+        $configOutput | ForEach-Object { Write-Host $_ }
+
+        $text = (($boundaryOutput + $configOutput) | Out-String)
+        if ($text -match '\[(PLAN|CREATE|RENAME|BLOCKED)\]') {
+          throw 'Post-Apply verification found a pending or blocked change. Desired state is not idempotent.'
+        }
+
+        Write-Host '[OK] Customer boundary and persistent CustomerConfiguration are idempotent.'
+      displayName: Verify desired state (System.AccessToken TEST)
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
