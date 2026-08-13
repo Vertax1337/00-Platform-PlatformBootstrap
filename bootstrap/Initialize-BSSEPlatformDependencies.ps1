@@ -105,8 +105,8 @@ function Get-BSSEEntraIdentityState {
         throw "Entra Service Principals konnten nicht gelesen werden.`n$($spResult.Output)"
     }
 
-    $principals = @($spResult.Output | ConvertFrom-Json) |
-        Where-Object { $_.displayName -eq $DisplayName }
+    $principals = @(@($spResult.Output | ConvertFrom-Json) |
+        Where-Object { $_.displayName -eq $DisplayName })
 
     if ($principals.Count -gt 1) {
         throw "Mehrere Entra Service Principals heißen exakt '$DisplayName'. Eindeutige Plattformidentität erforderlich."
@@ -122,8 +122,8 @@ function Get-BSSEEntraIdentityState {
         throw "Entra App Registrations konnten nicht gelesen werden.`n$($appResult.Output)"
     }
 
-    $applications = @($appResult.Output | ConvertFrom-Json) |
-        Where-Object { $_.displayName -eq $DisplayName }
+    $applications = @(@($appResult.Output | ConvertFrom-Json) |
+        Where-Object { $_.displayName -eq $DisplayName })
 
     if ($applications.Count -gt 1) {
         throw "Mehrere Entra App Registrations heißen exakt '$DisplayName'. Eindeutige Plattformidentität erforderlich."
@@ -268,8 +268,8 @@ function Wait-BSSEAzureDevOpsGraphServicePrincipal {
     )
 
     for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
-        $matches = @(Get-BSSEAzureDevOpsGraphServicePrincipals -OrganizationName $OrganizationName) |
-            Where-Object { $_.originId -eq $OriginId }
+        $matches = @(@(Get-BSSEAzureDevOpsGraphServicePrincipals -OrganizationName $OrganizationName) |
+            Where-Object { $_.originId -eq $OriginId })
 
         if ($matches.Count -gt 1) {
             throw "Azure DevOps enthält mehrere Graph-Service-Principals für Entra objectId $OriginId."
