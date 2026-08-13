@@ -869,7 +869,7 @@ function New-BSSEServiceEndpointConfiguration {
         throw "WIF-Authentifizierungsschema fehlt im Azure-DevOps-Endpoint-Type."
     }
 
-    $data = @{ creationMode = 'Manual' }
+    $data = @{}
     $authParameters = @{
         tenantid           = $Tenant
         serviceprincipalid = $EntraServicePrincipal.appId
@@ -1297,7 +1297,6 @@ if (-not $projectInfo) {
 
     throw "Projekt '$Project' fehlt nach Core-Apply."
 }
-
 $repos = @(Get-BSSEProjectRepositories -OrganizationUrl $OrganizationUrl -Project $Project)
 $repo = $repos | Where-Object { $_.name -eq $Repository } | Select-Object -First 1
 if (-not $repo) {
