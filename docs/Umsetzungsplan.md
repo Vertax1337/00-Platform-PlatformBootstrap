@@ -425,7 +425,7 @@ Create new projects = Allow korrekt als PLAN erkannt
 Service Connection / FIC / Pipeline-Autorisierung als nachgelagerte PLAN-Abhängigkeiten erkannt
 ```
 
-Während dieser Testfolge wurden zwei PowerShell-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
+Während dieser Testfolge wurden drei PowerShell-/REST-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
 
 ```text
 benannte Parameter bei internen .ps1-Aufrufen
@@ -433,29 +433,32 @@ benannte Parameter bei internen .ps1-Aufrufen
 
 0/1-Treffer aus ConvertFrom-Json + Where-Object unter StrictMode
 → Ergebnis explizit als Array materialisieren
+
+JsonPatchDocument mit genau einer Operation
+→ nicht über die PowerShell-Pipeline zu ConvertTo-Json senden
+→ Array über ConvertTo-Json -InputObject serialisieren
+→ vor dem REST-Aufruf zusätzlich sicherstellen, dass der Body mit '[' beginnt
 ```
 
-Der erste reale `-Apply` erreichte anschließend den Project-Branding-Schritt für `00-Platform`:
+Der erste reale `-Apply` erreichte den Project-Branding-Schritt für `00-Platform`:
 
 ```text
 [SET] Project avatar 00-Platform <- assets/project-icons/00-platform.png
 Azure DevOps Antwort: HTTP 204
 ```
 
-Die Microsoft-REST-Referenz dokumentiert für `Set Project Avatar` HTTP 200 als Erfolg; die reale BSSE-CloudOps-Organisation lieferte bei diesem erfolgreichen PUT HTTP 204. Der bisherige Code akzeptierte ausschließlich HTTP 200 und blockierte deshalb vor dem Marker-Write.
+Die Microsoft-REST-Referenz dokumentiert für `Set Project Avatar` HTTP 200 als Erfolg; die reale BSSE-CloudOps-Organisation lieferte bei diesem erfolgreichen PUT HTTP 204. PlatformBootstrap akzeptiert deshalb HTTP 200 und HTTP 204 als erfolgreiche Avatar-PUT-Antworten.
 
-Code-seitig ist in `main` nun festgelegt:
+Der zweite reale `-Apply` erreichte dadurch erstmals den nachgelagerten Project-Property-PATCH für den SHA-256-Marker:
 
 ```text
-Avatar PUT HTTP 200 oder 204
-→ als erfolgreicher API-Schritt akzeptieren
-→ anschließend SHA-256-Marker PATCH
-→ Marker GET
-→ exakten Hash verifizieren
-→ erst dann Branding-Sollzustand als verifiziert behandeln
+PATCH /_apis/projects/{projectId}/properties?api-version=7.1-preview.1
+Azure DevOps Antwort: HTTP 500
 ```
 
-Der bisherige Apply wurde vor der Entra-/WIF-Provisionierung abgebrochen. Aus ihm wird daher ausdrücklich noch **keine** erfolgreiche Entra-SP-, Entitlement-, ACL-, Service-Connection-, FIC- oder Pipeline-Autorisierungs-Verifikation abgeleitet.
+Die offizielle Project-Properties-API erwartet für diesen PATCH einen `JsonPatchDocument` als JSON-Array (`[ { ... } ]`). Der bisherige PowerShell-Code baute zwar ein ein-elementiges Array, leitete es anschließend aber per Pipeline an `ConvertTo-Json` weiter. PowerShell enumeriert Arrays in Pipelines elementweise; dadurch wurde die einzelne Patch-Operation als JSON-Objekt statt als JSON-Array serialisiert. Dies ist code-seitig korrigiert; die erfolgreiche Marker-Schreib-/Leseverifikation steht noch aus.
+
+Der bisherige Apply wurde erneut vor der Entra-/WIF-Provisionierung abgebrochen. Aus ihm wird daher ausdrücklich noch **keine** erfolgreiche Entra-SP-, Entitlement-, ACL-, Service-Connection-, FIC- oder Pipeline-Autorisierungs-Verifikation abgeleitet.
 
 ## 11. Customer-Onboarding / Dual Runtime
 
@@ -631,11 +634,14 @@ Asset-Mapping
 → bestehender Hash-Marker
 → bei Bedarf Avatar PUT
 → HTTP 200 oder 204
+→ JsonPatchDocument als Array serialisieren
 → Hash-Marker PATCH
 → Hash-Marker GET / exakte Verifikation
 ```
 
 Die offizielle API-Dokumentation nennt für `Set Project Avatar` HTTP 200. Der reale BSSE-CloudOps-Apply lieferte am 13.08.2026 HTTP 204. PlatformBootstrap akzeptiert daher explizit beide erfolgreichen Antworten; eine erfolgreiche HTTP-Antwort allein genügt jedoch nicht für den verwalteten Sollzustand, da anschließend weiterhin der SHA-256-Marker geschrieben und exakt gelesen werden muss.
+
+Der Project-Properties-PATCH erwartet `application/json-patch+json` und einen JSON-Array-Body. PlatformBootstrap serialisiert den ein-elementigen Patch deshalb über `ConvertTo-Json -InputObject` und prüft vor dem Request zusätzlich die Arrayform.
 
 Regressionstest:
 
@@ -670,6 +676,7 @@ docs/Project-Branding.md
 - offizielle Project-Avatar-REST-Integration,
 - Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den real beobachteten HTTP-204-Erfolg,
 - idempotente Project-Property-Markerstrategie,
+- Project-Properties-JsonPatchDocument wird auch bei genau einer Operation garantiert als JSON-Array serialisiert und vor dem Request geprüft,
 - Core-/Customer-Provisionierungsintegration des Brandings,
 - Branding-Asset-/Mapping-Regressionstest,
 - fünf freigegebene Branding-PNGs unter `assets/project-icons/`,
@@ -694,12 +701,13 @@ Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 - Zielidentität `sp-bsse-platform-bootstrap-azdo` ist noch nicht vorhanden und wird korrekt als PLAN erkannt,
 - vollständiger Dependency-Dry-Run erreicht den geplanten Self-Hosting-Zustand ohne Exception/BLOCKED,
 - realer Project-Avatar-PUT für `00-Platform` wurde erreicht,
-- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204.
+- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204,
+- zweiter Apply erreichte den Project-Property-PATCH für den Branding-Marker; Azure DevOps antwortete dort mit HTTP 500.
 
 ### Für v1.9 noch offen
 
 - `tests/Test-BSSEProjectBranding.ps1` gegen die versionierten Git-Dateien ausführen,
-- den korrigierten Branding-Apply erneut ausführen,
+- den nach JSON-Patch-Korrektur aktualisierten Branding-Apply erneut ausführen,
 - SHA-256-Marker für `00-Platform` per Project Properties schreiben und per GET exakt verifizieren,
 - Branding für `10-Automation`, `20-IaC` und `99-LAB` vollständig anwenden und verifizieren,
 - danach die Entra-/Azure-DevOps-Identität, Entitlement und `Create new projects`-ACL real erzeugen/verifizieren,
@@ -722,7 +730,7 @@ Bis zum weiteren echten Erstinstallations-/Runtime-Test sind insbesondere nicht 
 - pipeline-spezifische Service-Connection-Autorisierung,
 - WIF-Pipeline-Authentifizierung,
 - Git-Push nach `CustomerConfiguration`,
-- reale Project-Property-Marker-Schreib-/Leseverifikation,
+- erfolgreiche Project-Property-Marker-Schreib-/Leseverifikation nach der JSON-Patch-Korrektur,
 - vollständiger Branding-Apply für alle Core-Projekte,
 - tatsächliche Anzeige der Icons in der Azure-DevOps-UI,
 - realer vollständiger Apply-/Post-Apply-Idempotenzlauf.
