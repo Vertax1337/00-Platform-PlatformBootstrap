@@ -29,7 +29,12 @@
 - für genau diesen real bestätigten transienten `VS403283`-Materialisierungsfall ist ein begrenzter Retry implementiert; andere/persistente Entitlement-Fehler bleiben Fail Closed
 - der nächste reale Lauf erreichte die Collection-ACL-Ermittlung und zeigte, dass `az devops security permission list --output json` `effectiveAllow/effectiveDeny` nicht flach am Tokenobjekt liefert, sondern unter `acesDictionary` / `AccessControlEntry.extendedInfo`
 - die Collection-ACL-Auswertung normalisiert nun das dokumentierte verschachtelte Format auf `EffectiveAllow`/`EffectiveDeny`, berücksichtigt effektive Denies und blockiert unbekannte oder mehrdeutige ACE-Zuordnungen
-- Runtime-Retest der korrigierten ACL-Auswertung, reale `Create new projects`-Vergabe, WIF-Service-Connection/FIC/Pipeline-Autorisierung und abschließende Idempotenz-Verifikation bleiben offen
+- der korrigierte ACL-Dry-Run lief vollständig ohne `BLOCKED`/Exception durch und erkannte `Create new projects = Allow` als fehlenden Sollzustand
+- der anschließende reale Apply setzte `Create new projects = Allow` erfolgreich und verifizierte die Berechtigung unmittelbar danach aus Azure DevOps
+- die realen Service-Endpoint-Type-Metadaten konnten `Azure DevOps` + `WorkloadIdentityFederation` eindeutig identifizieren und die WIF-Service-Connection planen
+- der folgende Apply erreichte erstmals `New-BSSEServiceEndpointConfiguration`, stoppte dort jedoch vor der Service-Connection-Erstellung an einem StrictMode-Zugriff auf fehlendes `validation.isRequired`
+- Microsofts Service-Endpoint-Metadaten erlauben `validation` ohne `isRequired`; PlatformBootstrap prüft daher nun Property-Existenz und behandelt nur ein explizites `isRequired: true` als Pflichtfeld, unbekannte explizite Pflichtinputs bleiben Fail Closed
+- Runtime-Retest der korrigierten Endpoint-Metadaten-Auswertung, reale WIF-Service-Connection/FIC/Pipeline-Autorisierung und abschließende Idempotenz-Verifikation bleiben offen
 
 ## v1.8
 
