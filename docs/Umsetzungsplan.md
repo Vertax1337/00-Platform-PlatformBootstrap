@@ -3,7 +3,7 @@
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
 **Version:** 1.9 Candidate
 
-> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. Der reale Core-Branding-Apply inklusive SHA-256-Marker-Verifikation ist inzwischen für `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` bestätigt und ein Folge-Apply erkennt alle vier Zustände idempotent als `EXISTS`. v1.9 bleibt Candidate, bis Branding-Regressionstest, Collection-ACL-/WIF-Runtime-Schritte und der abschließende idempotente Dependency-Verify erfolgreich verifiziert wurden.
+> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. Der reale Core-Branding-Apply inklusive SHA-256-Marker-Verifikation ist für `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` bestätigt; ein Folge-Apply erkennt alle vier Zustände idempotent als `EXISTS`. Entra-App/SP, Azure-DevOps-Entitlement sowie `Create new projects = Allow` sind inzwischen ebenfalls real erzeugt bzw. verifiziert. v1.9 bleibt Candidate, bis Branding-Regressionstest, WIF-Service-Connection/FIC/Pipeline-Autorisierung, WIF-Pipeline-Run und der abschließende idempotente Dependency-Verify erfolgreich verifiziert wurden.
 
 ## 1. Core
 
@@ -324,7 +324,7 @@ AzureInfrastructureCollector
 OPNsenseDocumentation
 ```
 
-Aus dieser Entscheidung wird keine globale `<Projekt>-<Repository>`-Konvention für andere Projekte abgeleitet.
+Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konvention für andere Projekte.
 
 ## 10. Self-Hosting Bootstrap / Erstinitialisierung
 
@@ -402,7 +402,20 @@ Der neue Azure-DevOps-Service-Connection-Typ wird nicht mit einem geratenen undo
 
 Der Bootstrap fragt die Service-Endpoint-Type-Metadaten der Zielorganisation ab und akzeptiert ausschließlich einen eindeutigen `Azure DevOps`-Endpoint mit `WorkloadIdentityFederation`.
 
-Unbekannte erforderliche Inputs führen zu Fail Closed.
+Für `InputDescriptor.validation` gilt:
+
+```text
+validation fehlt
+→ kein Required-Flag vorhanden
+
+validation vorhanden, isRequired fehlt
+→ nicht als Pflichtfeld behandeln
+
+validation.isRequired == true
+→ unbekannter Input bleibt Fail Closed / BLOCKED
+```
+
+Damit werden optionale Azure-DevOps-Metadaten unter StrictMode robust verarbeitet, ohne unbekannte explizite Pflichtfelder zu erraten.
 
 ### Runtime-Teststand 13.08.2026
 
@@ -425,6 +438,10 @@ Azure 00-Platform/PlatformBootstrap main == lokaler committed HEAD
 sp-bsse-platform-bootstrap-azdo real als passwordless Entra App/Service Principal erstellt
 Azure DevOps Entitlement real erstellt
 Basic + 00-Platform/Readers anschließend als EXISTS verifiziert
+Collection-ACL-Struktur real ausgewertet
+Create new projects = Allow real vergeben
+Create new projects unmittelbar nach der Vergabe erfolgreich verifiziert
+Azure-DevOps-Service-Endpoint-Typ Azure DevOps + WorkloadIdentityFederation real eindeutig erkannt
 ```
 
 Während dieser Testfolge wurden mehrere PowerShell-/REST-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
@@ -446,6 +463,10 @@ az devops security permission list --output json
 → ACL.acesDictionary auflösen
 → AccessControlEntry.extendedInfo.effectiveAllow/effectiveDeny normalisieren
 → unbekanntes/mehrdeutiges Format weiterhin Fail Closed
+
+Service-Endpoint InputDescriptor unter StrictMode
+→ validation/isRequired nicht als zwingend vorhandene Property voraussetzen
+→ explizites isRequired == true bleibt Fail Closed
 ```
 
 Beim Entra→Azure-DevOps-Übergang wurde außerdem real ein transienter Materialisierungszustand beobachtet:
@@ -462,7 +483,7 @@ unveränderter Wiederholungslauf nach kurzer Wartezeit
 
 Damit ist für diesen konkreten Lauf bestätigt, dass `VS403283` transient durch die frisch erzeugte Identität auftreten kann. Der Bootstrap besitzt dafür nun einen begrenzten Retry ausschließlich auf diesen erkannten Fehlerfall; persistente oder andere Entitlement-Fehler bleiben Fail Closed.
 
-Der nächste reale Blocker trat bei der Collection-ACL-Ermittlung auf. Die bisherige Implementierung griff auf `effectiveAllow` direkt am ACL-Tokenobjekt zu. Die dokumentierte/real gelieferte Azure-DevOps-CLI-Struktur verwendet dagegen `acesDictionary` und `AccessControlEntry.extendedInfo`. Dieser Parser ist code-seitig korrigiert, die tatsächliche `Create new projects`-Vergabe und Post-Write-Verifikation stehen noch aus.
+Nach der ACL-Korrektur wurde der vollständige Dependency-Dry-Run ohne `BLOCKED`/Exception beendet. Der anschließende Apply setzte `Create new projects = Allow` erfolgreich und erreichte erstmals die reale Service-Endpoint-Konfiguration. Dort stoppte er vor der Service-Connection-Erstellung, weil mindestens ein von Azure DevOps gelieferter InputDescriptor zwar `validation`, aber keine Property `isRequired` besaß. Die Microsoft-REST-Struktur erlaubt diesen optionalen Zustand; der Zugriff ist code-seitig korrigiert. Der Runtime-Retest dieser Korrektur steht noch aus.
 
 ## 11. Customer-Onboarding / Dual Runtime
 
@@ -691,7 +712,8 @@ docs/Project-Branding.md
 - robuste Array-Materialisierung für Entra-/Graph-Identitätssuchen unter StrictMode,
 - begrenzter Retry für den real bestätigten transienten Azure-DevOps-Entitlementfehler `VS403283` unmittelbar nach Entra-SP-Erstellung,
 - Normalisierung von `az devops security permission list` aus `acesDictionary` / `AccessControlEntry.extendedInfo` auf `EffectiveAllow` und `EffectiveDeny`,
-- ACL-Ausgabeformat/ACE-Zuordnung bleibt bei unbekanntem oder mehrdeutigem Zustand Fail Closed.
+- ACL-Ausgabeformat/ACE-Zuordnung bleibt bei unbekanntem oder mehrdeutigem Zustand Fail Closed,
+- StrictMode-sichere Prüfung von optionalem `InputDescriptor.validation.isRequired`; nur explizit `true` bleibt Pflichtfeld/Fail-Closed-Kriterium.
 
 ### Bereits runtime-verifiziert
 
@@ -715,14 +737,17 @@ Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 - unmittelbar anschließender erster Entitlementversuch lieferte `VS403283`,
 - unveränderter späterer Apply konnte das Azure-DevOps-Service-Principal-Entitlement erfolgreich erstellen,
 - `Basic + 00-Platform/Readers` anschließend real aus Azure DevOps gelesen und als `EXISTS` verifiziert,
-- Collection-Security-Namespace/CREATE_PROJECTS-Pfad wurde erreicht; der Lauf stoppte dort am inzwischen korrigierten ACL-Parser.
+- korrigierte Collection-ACL-Normalisierung gegen die reale `BSSE-CloudOps`-Ausgabe erfolgreich durchlaufen,
+- `Create new projects = Allow` real gesetzt,
+- `Create new projects = Allow` unmittelbar nach dem Write erfolgreich wieder gelesen/verifiziert,
+- Azure-DevOps-Service-Endpoint-Typ für `Azure DevOps` + `WorkloadIdentityFederation` real eindeutig erkannt,
+- der Apply hat die tatsächliche Service-Endpoint-Konfigurationsfunktion erreicht.
 
 ### Für v1.9 noch offen
 
 - `tests/Test-BSSEProjectBranding.ps1` gegen die versionierten Git-Dateien ausführen,
 - tatsächliche visuelle Anzeige der Core-Projekt-Icons in der Azure-DevOps-UI bestätigen,
-- korrigierte ACL-Normalisierung im realen Lauf erneut prüfen,
-- `Create new projects = Allow` für `sp-bsse-platform-bootstrap-azdo` real vergeben und Post-Write verifizieren,
+- korrigierte optionale `validation.isRequired`-Auswertung im realen Apply erneut prüfen,
 - den neuen begrenzten `VS403283`-Retry bei einem zukünftigen frischen Bootstrap als Erstlaufpfad runtime-verifizieren; der zugrunde liegende transiente Zustand selbst ist bereits bestätigt,
 - WIF-Service-Connection `sc-platform-bootstrap-azdo` anhand der real gelieferten Endpoint-Type-Metadaten erzeugen/verifizieren,
 - federated credential und pipeline-spezifische Service-Connection-Autorisierung erzeugen/verifizieren,
@@ -732,18 +757,17 @@ Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 
 ### Noch nicht runtime-verifiziert
 
-Bis zum weiteren echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut bestätigt:
+Bis zum weiteren echten Erstinitialisierungs-/Runtime-Test sind insbesondere nicht absolut bestätigt:
 
-- tatsächliche `Create new projects`-ACL-Zuweisung und deren Post-Write-Verifikation,
-- korrigierte ACL-Normalisierung gegen die konkrete BSSE-CloudOps-Ausgabe,
-- Retry-Implementierung für `VS403283` innerhalb eines einzelnen frischen Erstlaufs,
-- tatsächlich gelieferte Endpoint-Type-Metadaten für die Azure-DevOps-WIF-Service-Connection,
+- Runtime-Erfolg der korrigierten `validation.isRequired`-Prüfung,
 - reale Erstellung von `sc-platform-bootstrap-azdo`,
+- die real erzeugten WIF-`issuer`-/`subject`-Werte,
 - reales federated credential,
 - pipeline-spezifische Service-Connection-Autorisierung,
 - WIF-Pipeline-Authentifizierung,
 - Git-Push nach `CustomerConfiguration`,
 - tatsächliche visuelle Anzeige der Icons in der Azure-DevOps-UI,
+- Retry-Implementierung für `VS403283` innerhalb eines einzelnen frischen Erstlaufs,
 - realer vollständiger Apply-/Post-Apply-Idempotenzlauf ohne verbleibenden `PLAN`/`BLOCKED`.
 
 ## 16. Separater IaC-Techniker-/Deployment-Weg
