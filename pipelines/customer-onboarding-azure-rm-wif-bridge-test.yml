@@ -1,0 +1,347 @@
+trigger: none
+pr: none
+
+# TEMPORARY E2E TEST HARNESS
+#
+# Productive target remains pipelines/customer-onboarding.yml with the dedicated
+# Azure DevOps (Preview) workloadidentityuser service connection
+# sc-platform-bootstrap-azdo.
+#
+# This temporary pipeline uses an AzureRM WorkloadIdentityFederation service
+# connection only to establish an Entra CLI session for the existing dedicated
+# platform service principal. The scripts then request an Azure DevOps Entra token
+# for resource 499b84ac-1321-427f-aa17-267ca6975798.
+#
+# No PAT, client secret, Azure subscription RBAC, or alternative backend is added.
+
+parameters:
+- name: customerNumber
+  displayName: Customer / Debitor number
+  type: string
+  default: '00000'
+
+- name: customerName
+  displayName: Customer name
+  type: string
+  default: 'Bernd Schneider Software Engineering GmbH'
+
+- name: customerSlug
+  displayName: Customer slug (optional)
+  type: string
+  default: ''
+
+- name: tenantId
+  displayName: Azure Tenant ID (optional)
+  type: string
+  default: 'f9acedfe-a77a-4831-b79c-f010afa6b889'
+
+- name: azureDocumentation
+  displayName: AzureDocumentation
+  type: boolean
+  default: true
+
+- name: opnsenseDocumentation
+  displayName: OPNsenseDocumentation
+  type: boolean
+  default: false
+
+- name: firewalls
+  displayName: Firewalls / sites (comma-separated, optional)
+  type: string
+  default: ''
+
+- name: confirmTemporaryAzureRmWifBridge
+  displayName: I understand this is the temporary AzureRM-WIF bridge E2E test path
+  type: boolean
+  default: false
+
+variables:
+  azureRmBridgeServiceConnection: 'sc-platform-bootstrap-azdo-arm-bridge'
+
+pool:
+  vmImage: windows-latest
+
+stages:
+- stage: Validate
+  displayName: Validate bridge and input
+  jobs:
+  - job: ValidateInput
+    displayName: Validate onboarding parameters and bridge identity
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: AzureCLI@3
+      displayName: Validate AzureRM-WIF bridge and Azure DevOps token
+      inputs:
+        connectionType: azureRM
+        azureSubscription: '$(azureRmBridgeServiceConnection)'
+        allowNoSubscriptions: true
+        scriptType: pscore
+        scriptLocation: inlineScript
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          if ('${{ parameters.confirmTemporaryAzureRmWifBridge }}' -ne 'True') {
+            throw @'
+This is the temporary AzureRM-WIF bridge E2E test pipeline.
+Set confirmTemporaryAzureRmWifBridge=true explicitly to run it.
+The productive authentication target remains sc-platform-bootstrap-azdo via Azure DevOps (Preview) WIF.
+'@
+          }
+
+          if ([string]::IsNullOrWhiteSpace('${{ parameters.customerNumber }}')) {
+            throw 'CustomerNumber is required.'
+          }
+
+          if ([string]::IsNullOrWhiteSpace('${{ parameters.customerName }}')) {
+            throw 'CustomerName is required.'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $tenant = [guid]::Empty
+            if (-not [guid]::TryParse('${{ parameters.tenantId }}', [ref]$tenant)) {
+              throw 'TenantId is not a valid GUID.'
+            }
+          }
+
+          $account = az account show --output json --only-show-errors | ConvertFrom-Json
+          Write-Host '=== AZURERM WIF BRIDGE AZURE CONTEXT ==='
+          Write-Host "TenantId: $($account.tenantId)"
+          Write-Host "UserType: $($account.user.type)"
+          Write-Host "UserName: $($account.user.name)"
+
+          $token = az account get-access-token `
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 `
+            --query accessToken `
+            --output tsv `
+            --only-show-errors
+
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($token)) {
+            throw 'AzureRM-WIF bridge could not acquire an Azure DevOps Entra token.'
+          }
+
+          $connectionData = Invoke-RestMethod `
+            -Method GET `
+            -Uri "$(System.CollectionUri)_apis/connectionData?connectOptions=1&lastChangeId=-1&lastChangeId64=-1&api-version=7.1-preview.1" `
+            -Headers @{ Authorization = "Bearer $token" }
+
+          $identity = $connectionData.authenticatedUser
+          Write-Host '=== AZURE DEVOPS TOKEN IDENTITY ==='
+          Write-Host "DisplayName: $($identity.providerDisplayName)"
+          Write-Host "CustomName:  $($identity.customDisplayName)"
+          Write-Host "Id:          $($identity.id)"
+          Write-Host "Descriptor:  $($identity.descriptor)"
+          Write-Host '================================='
+          Write-Host '[OK] AzureRM-WIF bridge can obtain and use an Azure DevOps Entra token.'
+
+- stage: DryRun
+  displayName: Bootstrap dry run
+  dependsOn: Validate
+  condition: succeeded()
+  jobs:
+  - job: DryRun
+    displayName: Generate onboarding plan
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: AzureCLI@3
+      name: DryRunState
+      displayName: Run complete customer onboarding - DRY RUN (AzureRM-WIF bridge TEST)
+      inputs:
+        connectionType: azureRM
+        azureSubscription: '$(azureRmBridgeServiceConnection)'
+        allowNoSubscriptions: true
+        scriptType: pscore
+        scriptLocation: inlineScript
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          $modules = @()
+          if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+          if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+
+          $scriptParameters = @{
+            OrganizationUrl = '$(System.CollectionUri)'
+            CustomerNumber  = '${{ parameters.customerNumber }}'
+            CustomerName    = '${{ parameters.customerName }}'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+            $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $scriptParameters.TenantId = '${{ parameters.tenantId }}'
+          }
+
+          if ($modules.Count -gt 0) {
+            $scriptParameters.Modules = @($modules)
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+            $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
+          }
+
+          Write-Host '=== DRY RUN: CUSTOMER BOUNDARY ==='
+          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters *>&1
+          $boundaryOutput | ForEach-Object { Write-Host $_ }
+
+          Write-Host '=== DRY RUN: CUSTOMERCONFIGURATION ==='
+          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1
+          $configOutput | ForEach-Object { Write-Host $_ }
+
+          $text = (($boundaryOutput + $configOutput) | Out-String)
+          if ($text -match '\[BLOCKED\]') {
+            throw 'Dry Run contains a BLOCKED state. Apply is not permitted.'
+          }
+
+          $hasChanges = ($text -match '\[PLAN\]')
+          Write-Host "##vso[task.setvariable variable=hasChanges;isOutput=true]$($hasChanges.ToString().ToLowerInvariant())"
+
+          if ($hasChanges) {
+            Write-Host '[PLAN] Changes require review and approval.'
+          }
+          else {
+            Write-Host '[OK] Desired state including CustomerConfiguration is already present.'
+          }
+
+- stage: Approval
+  displayName: Review dry run
+  dependsOn: DryRun
+  condition: and(succeeded(), eq(dependencies.DryRun.outputs['DryRun.DryRunState.hasChanges'], 'true'))
+  jobs:
+  - job: ManualReview
+    displayName: Technician approval
+    pool: server
+    timeoutInMinutes: 1440
+    steps:
+    - task: ManualValidation@1
+      timeoutInMinutes: 1440
+      inputs:
+        notifyUsers: ''
+        instructions: |
+          TEMPORARY AZURERM-WIF BRIDGE E2E TEST MODE.
+          Review the complete Dry Run output.
+          Approve only if project, repositories, documentation capabilities, CustomerConfiguration changes and firewall repositories match the intended customer onboarding and no unexpected operation is shown.
+          Productive Azure DevOps (Preview) WIF remains BLOCKED/open and is not replaced by this bridge.
+        onTimeout: reject
+
+- stage: Apply
+  displayName: Apply onboarding
+  dependsOn: Approval
+  condition: succeeded()
+  jobs:
+  - job: Apply
+    displayName: Provision customer and persist configuration
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: AzureCLI@3
+      displayName: Run complete customer onboarding - APPLY (AzureRM-WIF bridge TEST)
+      inputs:
+        connectionType: azureRM
+        azureSubscription: '$(azureRmBridgeServiceConnection)'
+        allowNoSubscriptions: true
+        scriptType: pscore
+        scriptLocation: inlineScript
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          $modules = @()
+          if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+          if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+
+          $scriptParameters = @{
+            OrganizationUrl = '$(System.CollectionUri)'
+            CustomerNumber  = '${{ parameters.customerNumber }}'
+            CustomerName    = '${{ parameters.customerName }}'
+            Apply           = $true
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+            $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $scriptParameters.TenantId = '${{ parameters.tenantId }}'
+          }
+
+          if ($modules.Count -gt 0) {
+            $scriptParameters.Modules = @($modules)
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+            $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
+          }
+
+          Write-Host '=== APPLY: CUSTOMER BOUNDARY ==='
+          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters
+
+          Write-Host '=== APPLY: CUSTOMERCONFIGURATION ==='
+          & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters
+
+- stage: Verify
+  displayName: Verify idempotency
+  dependsOn: Apply
+  condition: succeeded()
+  jobs:
+  - job: Verify
+    displayName: Re-run complete dry run and verify no changes
+    steps:
+    - checkout: self
+      clean: true
+
+    - task: AzureCLI@3
+      displayName: Verify desired state (AzureRM-WIF bridge TEST)
+      inputs:
+        connectionType: azureRM
+        azureSubscription: '$(azureRmBridgeServiceConnection)'
+        allowNoSubscriptions: true
+        scriptType: pscore
+        scriptLocation: inlineScript
+        inlineScript: |
+          $ErrorActionPreference = 'Stop'
+
+          $modules = @()
+          if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
+          if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
+
+          $scriptParameters = @{
+            OrganizationUrl = '$(System.CollectionUri)'
+            CustomerNumber  = '${{ parameters.customerNumber }}'
+            CustomerName    = '${{ parameters.customerName }}'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+            $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
+            $scriptParameters.TenantId = '${{ parameters.tenantId }}'
+          }
+
+          if ($modules.Count -gt 0) {
+            $scriptParameters.Modules = @($modules)
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
+            $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
+          }
+
+          Write-Host '=== VERIFY: CUSTOMER BOUNDARY ==='
+          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters *>&1
+          $boundaryOutput | ForEach-Object { Write-Host $_ }
+
+          Write-Host '=== VERIFY: CUSTOMERCONFIGURATION ==='
+          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1
+          $configOutput | ForEach-Object { Write-Host $_ }
+
+          $text = (($boundaryOutput + $configOutput) | Out-String)
+          if ($text -match '\[(PLAN|CREATE|RENAME|BLOCKED)\]') {
+            throw 'Post-Apply verification found a pending or blocked change. Desired state is not idempotent.'
+          }
+
+          Write-Host '[OK] Customer boundary and persistent CustomerConfiguration are idempotent.'
