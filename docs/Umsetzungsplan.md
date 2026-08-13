@@ -415,7 +415,21 @@ validation.isRequired == true
 → unbekannter Input bleibt Fail Closed / BLOCKED
 ```
 
-Damit werden optionale Azure-DevOps-Metadaten unter StrictMode robust verarbeitet, ohne unbekannte explizite Pflichtfelder zu erraten.
+Für die typspezifischen Service-Endpoint-Daten gilt zusätzlich:
+
+```text
+ServiceEndpoint.data startet leer
+→ ausschließlich EndpointType.inputDescriptors werden übernommen
+
+creationMode
+→ kein pauschales Default-Feld
+→ nur wenn Azure DevOps selbst einen Descriptor mit id=creationMode liefert
+
+unbekannter explizit erforderlicher Descriptor
+→ Fail Closed / BLOCKED
+```
+
+Damit werden optionale Azure-DevOps-Metadaten unter StrictMode robust verarbeitet und keine nicht deklarierten typspezifischen Inputs erzeugt.
 
 ### Runtime-Teststand 13.08.2026
 
@@ -441,7 +455,9 @@ Basic + 00-Platform/Readers anschließend als EXISTS verifiziert
 Collection-ACL-Struktur real ausgewertet
 Create new projects = Allow real vergeben
 Create new projects unmittelbar nach der Vergabe erfolgreich verifiziert
+späterer Apply erkennt Create new projects = Allow idempotent als EXISTS
 Azure-DevOps-Service-Endpoint-Typ Azure DevOps + WorkloadIdentityFederation real eindeutig erkannt
+Service-Connection-Create-Aufruf real erreicht
 ```
 
 Während dieser Testfolge wurden mehrere PowerShell-/REST-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
@@ -467,6 +483,11 @@ az devops security permission list --output json
 Service-Endpoint InputDescriptor unter StrictMode
 → validation/isRequired nicht als zwingend vorhandene Property voraussetzen
 → explizites isRequired == true bleibt Fail Closed
+
+Service-Endpoint data.creationMode
+→ nicht pauschal als Manual setzen
+→ Azure DevOps akzeptiert nur Inputs, die im Contribution-/Endpoint-Typ definiert sind
+→ ServiceEndpoint.data wird ausschließlich aus real gelieferten inputDescriptors aufgebaut
 ```
 
 Beim Entra→Azure-DevOps-Übergang wurde außerdem real ein transienter Materialisierungszustand beobachtet:
@@ -483,7 +504,7 @@ unveränderter Wiederholungslauf nach kurzer Wartezeit
 
 Damit ist für diesen konkreten Lauf bestätigt, dass `VS403283` transient durch die frisch erzeugte Identität auftreten kann. Der Bootstrap besitzt dafür nun einen begrenzten Retry ausschließlich auf diesen erkannten Fehlerfall; persistente oder andere Entitlement-Fehler bleiben Fail Closed.
 
-Nach der ACL-Korrektur wurde der vollständige Dependency-Dry-Run ohne `BLOCKED`/Exception beendet. Der anschließende Apply setzte `Create new projects = Allow` erfolgreich und erreichte erstmals die reale Service-Endpoint-Konfiguration. Dort stoppte er vor der Service-Connection-Erstellung, weil mindestens ein von Azure DevOps gelieferter InputDescriptor zwar `validation`, aber keine Property `isRequired` besaß. Die Microsoft-REST-Struktur erlaubt diesen optionalen Zustand; der Zugriff ist code-seitig korrigiert. Der Runtime-Retest dieser Korrektur steht noch aus.
+Nach der ACL-Korrektur wurde der vollständige Dependency-Dry-Run ohne `BLOCKED`/Exception beendet. Der anschließende Apply setzte `Create new projects = Allow` erfolgreich und erreichte erstmals die reale Service-Endpoint-Konfiguration. Dort stoppte er zunächst, weil mindestens ein von Azure DevOps gelieferter InputDescriptor zwar `validation`, aber keine Property `isRequired` besaß. Nach der StrictMode-Korrektur erreichte der nächste Apply den tatsächlichen `az devops service-endpoint create`-Aufruf. Azure DevOps lehnte dort das pauschal gesetzte `creationMode` mit der eindeutigen Meldung ab, dass nur im Contribution Type definierte Inputs erlaubt sind. Dieser Befund ist jetzt code-seitig durch ausschließlich descriptor-basierte `data`-Erzeugung umgesetzt; der erneute Runtime-Apply steht noch aus.
 
 ## 11. Customer-Onboarding / Dual Runtime
 
@@ -713,7 +734,8 @@ docs/Project-Branding.md
 - begrenzter Retry für den real bestätigten transienten Azure-DevOps-Entitlementfehler `VS403283` unmittelbar nach Entra-SP-Erstellung,
 - Normalisierung von `az devops security permission list` aus `acesDictionary` / `AccessControlEntry.extendedInfo` auf `EffectiveAllow` und `EffectiveDeny`,
 - ACL-Ausgabeformat/ACE-Zuordnung bleibt bei unbekanntem oder mehrdeutigem Zustand Fail Closed,
-- StrictMode-sichere Prüfung von optionalem `InputDescriptor.validation.isRequired`; nur explizit `true` bleibt Pflichtfeld/Fail-Closed-Kriterium.
+- StrictMode-sichere Prüfung von optionalem `InputDescriptor.validation.isRequired`; nur explizit `true` bleibt Pflichtfeld/Fail-Closed-Kriterium,
+- `ServiceEndpoint.data` wird ausschließlich aus den real gelieferten `EndpointType.inputDescriptors` aufgebaut; `creationMode` ist kein pauschales Default-Feld mehr.
 
 ### Bereits runtime-verifiziert
 
@@ -740,16 +762,18 @@ Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 - korrigierte Collection-ACL-Normalisierung gegen die reale `BSSE-CloudOps`-Ausgabe erfolgreich durchlaufen,
 - `Create new projects = Allow` real gesetzt,
 - `Create new projects = Allow` unmittelbar nach dem Write erfolgreich wieder gelesen/verifiziert,
+- ein späterer Apply erkennt `Create new projects = Allow` idempotent als `EXISTS`,
 - Azure-DevOps-Service-Endpoint-Typ für `Azure DevOps` + `WorkloadIdentityFederation` real eindeutig erkannt,
-- der Apply hat die tatsächliche Service-Endpoint-Konfigurationsfunktion erreicht.
+- der Apply hat die tatsächliche Service-Endpoint-Konfigurationsfunktion erreicht,
+- nach der StrictMode-Korrektur wurde der reale `az devops service-endpoint create`-Aufruf erreicht,
+- Azure DevOps bestätigte dabei explizit, dass das pauschal gesetzte `creationMode` im realen Endpoint-Typ nicht als Input definiert ist.
 
 ### Für v1.9 noch offen
 
 - `tests/Test-BSSEProjectBranding.ps1` gegen die versionierten Git-Dateien ausführen,
 - tatsächliche visuelle Anzeige der Core-Projekt-Icons in der Azure-DevOps-UI bestätigen,
-- korrigierte optionale `validation.isRequired`-Auswertung im realen Apply erneut prüfen,
 - den neuen begrenzten `VS403283`-Retry bei einem zukünftigen frischen Bootstrap als Erstlaufpfad runtime-verifizieren; der zugrunde liegende transiente Zustand selbst ist bereits bestätigt,
-- WIF-Service-Connection `sc-platform-bootstrap-azdo` anhand der real gelieferten Endpoint-Type-Metadaten erzeugen/verifizieren,
+- WIF-Service-Connection `sc-platform-bootstrap-azdo` nach der descriptor-basierten `data`-Korrektur erzeugen/verifizieren,
 - federated credential und pipeline-spezifische Service-Connection-Autorisierung erzeugen/verifizieren,
 - abschließenden Dependency-Dry-Run ohne `PLAN`/`BLOCKED` durchführen,
 - WIF-Pipeline-Authentifizierung mit `Customer-Onboarding` real ausführen,
@@ -759,7 +783,7 @@ Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
 
 Bis zum weiteren echten Erstinitialisierungs-/Runtime-Test sind insbesondere nicht absolut bestätigt:
 
-- Runtime-Erfolg der korrigierten `validation.isRequired`-Prüfung,
+- erfolgreicher Service-Connection-Create nach Entfernung des pauschalen `creationMode`,
 - reale Erstellung von `sc-platform-bootstrap-azdo`,
 - die real erzeugten WIF-`issuer`-/`subject`-Werte,
 - reales federated credential,
