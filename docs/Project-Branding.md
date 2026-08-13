@@ -1,6 +1,6 @@
 # Project Branding – Azure DevOps Project Avatars
 
-> **Status:** v1.9 Candidate auf `main`. Code, Mapping und die fünf freigegebenen Original-PNGs sind versioniert. Der erste reale Apply hat den Avatar-PUT für `00-Platform` erreicht und von Azure DevOps HTTP 204 erhalten. Die Implementierung akzeptiert deshalb nun HTTP 200 oder 204 als erfolgreichen Avatar-PUT; Marker-Write/Readback und vollständige Runtime-Verifikation bleiben noch offen.
+> **Status:** v1.9 Candidate auf `main`. Code, Mapping und die fünf freigegebenen Original-PNGs sind versioniert. Reale Applies haben den Avatar-PUT für `00-Platform` erfolgreich erreicht (Azure DevOps: HTTP 204). Der nachgelagerte Project-Property-PATCH scheiterte im zweiten Apply mit HTTP 500; als Codeursache wurde die PowerShell-Pipeline-Enumeration eines ein-elementigen JSON-Patch-Arrays identifiziert und in `main` korrigiert. Marker-PATCH/GET und vollständige Runtime-Verifikation bleiben noch offen.
 
 ## Zweck
 
@@ -82,7 +82,28 @@ Referenz:
 https://learn.microsoft.com/rest/api/azure/devops/core/avatar/set-project-avatar?view=azure-devops-rest-7.1
 ```
 
-Microsoft dokumentiert für `Set Project Avatar` aktuell HTTP 200 als Erfolg. Der erste reale BSSE-CloudOps-Apply am 13.08.2026 lieferte für den Avatar-PUT von `00-Platform` jedoch HTTP 204. Da beide Statuscodes erfolgreiche 2xx-Antworten darstellen und der gewünschte Zustand anschließend zusätzlich über den verwalteten Marker verifiziert wird, akzeptiert PlatformBootstrap für diesen Endpoint explizit HTTP 200 und HTTP 204.
+Microsoft dokumentiert für `Set Project Avatar` aktuell HTTP 200 als Erfolg. Der reale BSSE-CloudOps-Apply am 13.08.2026 lieferte für den Avatar-PUT von `00-Platform` jedoch HTTP 204. PlatformBootstrap akzeptiert deshalb für diesen Endpoint explizit HTTP 200 und HTTP 204; der gewünschte Zustand wird trotzdem erst nach erfolgreichem Marker-Write und Marker-Readback als verifiziert behandelt.
+
+Für den verwalteten SHA-256-Marker werden die offiziellen Project-Properties-APIs verwendet:
+
+```text
+GET   https://dev.azure.com/{organization}/_apis/projects/{projectId}/properties?keys=...&api-version=7.1-preview.1
+PATCH https://dev.azure.com/{organization}/_apis/projects/{projectId}/properties?api-version=7.1-preview.1
+```
+
+Der PATCH erwartet `application/json-patch+json` und einen `JsonPatchDocument`-Body als JSON-Array, auch wenn nur eine Operation enthalten ist:
+
+```json
+[
+  {
+    "op": "add",
+    "path": "/BSSE.PlatformBootstrap.ProjectAvatarSha256",
+    "value": "<sha256>"
+  }
+]
+```
+
+Der zweite reale Apply am 13.08.2026 erreichte diesen PATCH, erhielt jedoch HTTP 500. Die Codeanalyse zeigte, dass das zuvor mit `@(...) | ConvertTo-Json` erzeugte ein-elementige Array von PowerShell in der Pipeline enumeriert und dadurch als einzelnes JSON-Objekt statt als JSON-Array serialisiert wurde. Der Code verwendet nun `ConvertTo-Json -InputObject $patchDocument` und prüft zusätzlich, dass der serialisierte Body tatsächlich mit `[` beginnt.
 
 Die bestehende Bootstrap-Authentifizierung wird weiterverwendet:
 
@@ -125,6 +146,8 @@ Hash identisch?
       Apply   → Avatar PUT
                  ↓
                HTTP 200 oder 204 erforderlich
+                 ↓
+               JSON-Patch als Array serialisieren
                  ↓
                SHA-256-Property schreiben
                  ↓
@@ -172,6 +195,8 @@ Marker lesbar?
     ↓
 Avatar API HTTP 200/204?
     ↓
+JSON-Patch garantiert Array?
+    ↓
 Marker schreibbar?
     ↓
 Marker erneut lesbar und exakt verifiziert?
@@ -198,6 +223,9 @@ REST-/Berechtigungsfehler
 → BLOCKED / Fehler
 
 Avatar PUT nicht mit HTTP 200 oder 204 bestätigt
+→ BLOCKED / Fehler
+
+JSON-Patch nicht als Array serialisierbar
 → BLOCKED / Fehler
 
 Hash-Marker nicht schreib-/les-/verifizierbar
@@ -237,7 +265,8 @@ Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften 
 - Assets im `main`-Git-Tree bytegenau gegen die geprüften Originale abgeglichen,
 - Core-/Customer-Provisionierungsintegration code-seitig in `main`,
 - realer Avatar-PUT für `00-Platform` wurde am 13.08.2026 erreicht,
-- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204.
+- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204,
+- der zweite Apply erreichte den Project-Property-PATCH und lieferte dort HTTP 500.
 
 ### Code-seitig implementiert
 
@@ -248,12 +277,13 @@ Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften 
 - Customer-Projektintegration,
 - Dry-Run-/Apply-/Fail-Closed-Verhalten,
 - Regressionstest mit den freigegebenen Asset-Hashes,
-- Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den real beobachteten HTTP-204-Erfolg.
+- Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den real beobachteten HTTP-204-Erfolg,
+- Project-Property-PATCH serialisiert das JsonPatchDocument garantiert als Array und prüft den resultierenden Body vor dem REST-Aufruf.
 
 ### Noch offen
 
 - `tests/Test-BSSEProjectBranding.ps1` lokal ausführen,
-- korrigierten Apply erneut ausführen,
+- den nach JSON-Patch-Korrektur aktualisierten Apply erneut ausführen,
 - Project-Property-Marker für `00-Platform` schreiben und per GET exakt verifizieren,
 - Branding für `10-Automation`, `20-IaC` und `99-LAB` durchlaufen,
 - tatsächliche Anzeige der Icons in der Azure-DevOps-UI bestätigen,
@@ -263,7 +293,7 @@ Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften 
 
 Bis zum nächsten realen Azure-DevOps-Lauf dürfen folgende Punkte nicht als bestätigt gelten:
 
-- erfolgreicher Marker-PATCH/GET-Readback in `BSSE-CloudOps`,
+- erfolgreicher Marker-PATCH/GET-Readback in `BSSE-CloudOps` nach der JSON-Patch-Korrektur,
 - vollständiger Branding-Apply für alle Core-Projekte,
 - WIF-Pipeline-Identität für Project Avatar + Project Properties,
 - tatsächliche Anzeige aller Icons in der Azure-DevOps-UI.
