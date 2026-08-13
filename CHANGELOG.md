@@ -31,10 +31,13 @@
 - die Collection-ACL-Auswertung normalisiert nun das dokumentierte verschachtelte Format auf `EffectiveAllow`/`EffectiveDeny`, berücksichtigt effektive Denies und blockiert unbekannte oder mehrdeutige ACE-Zuordnungen
 - der korrigierte ACL-Dry-Run lief vollständig ohne `BLOCKED`/Exception durch und erkannte `Create new projects = Allow` als fehlenden Sollzustand
 - der anschließende reale Apply setzte `Create new projects = Allow` erfolgreich und verifizierte die Berechtigung unmittelbar danach aus Azure DevOps
+- ein späterer Apply erkennt `Create new projects = Allow` idempotent als `EXISTS`
 - die realen Service-Endpoint-Type-Metadaten konnten `Azure DevOps` + `WorkloadIdentityFederation` eindeutig identifizieren und die WIF-Service-Connection planen
 - der folgende Apply erreichte erstmals `New-BSSEServiceEndpointConfiguration`, stoppte dort jedoch vor der Service-Connection-Erstellung an einem StrictMode-Zugriff auf fehlendes `validation.isRequired`
 - Microsofts Service-Endpoint-Metadaten erlauben `validation` ohne `isRequired`; PlatformBootstrap prüft daher nun Property-Existenz und behandelt nur ein explizites `isRequired: true` als Pflichtfeld, unbekannte explizite Pflichtinputs bleiben Fail Closed
-- Runtime-Retest der korrigierten Endpoint-Metadaten-Auswertung, reale WIF-Service-Connection/FIC/Pipeline-Autorisierung und abschließende Idempotenz-Verifikation bleiben offen
+- der nächste Apply erreichte den realen `az devops service-endpoint create`-Aufruf; Azure DevOps lehnte das pauschal gesetzte `creationMode` mit der eindeutigen Meldung ab, dass nur im Contribution-/Endpoint-Typ definierte Inputs zulässig sind
+- `ServiceEndpoint.data` startet deshalb jetzt leer und wird ausschließlich aus den real gelieferten `EndpointType.inputDescriptors` aufgebaut; `creationMode` wird nur noch gesetzt, wenn Azure DevOps selbst einen entsprechenden Descriptor liefert
+- erfolgreicher WIF-Service-Connection-Create nach dieser metadata-driven Korrektur, FIC/Pipeline-Autorisierung und abschließende Idempotenz-Verifikation bleiben offen
 
 ## v1.8
 
