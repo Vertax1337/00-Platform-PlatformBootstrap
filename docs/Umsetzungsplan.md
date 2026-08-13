@@ -3,7 +3,7 @@
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
 **Version:** 1.9 Candidate
 
-> `main` ist der Arbeits- und Source-of-Truth-Branch. Der Project-Branding-Stand bleibt bis zur Versionierung und Verifikation der fünf freigegebenen Original-PNGs als v1.9 Candidate gekennzeichnet.
+> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind inzwischen versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. v1.9 bleibt Candidate, bis der Branding-Regressionstest und die noch offenen Azure-DevOps-Runtime-Schritte einschließlich des korrigierten Self-Hosting-Dry-Runs erfolgreich verifiziert wurden.
 
 ## 1. Core
 
@@ -404,6 +404,30 @@ Der Bootstrap fragt die Service-Endpoint-Type-Metadaten der Zielorganisation ab 
 
 Unbekannte erforderliche Inputs führen zu Fail Closed.
 
+### Erster Runtime-Test 13.08.2026
+
+Der erste reale lokale Dependency-Dry-Run hat bereits erfolgreich bestätigt:
+
+```text
+Azure CLI verfügbar
+Azure-DevOps-CLI-Erweiterung verfügbar
+Organisationsprofil / Ziel-Tenant erkannt
+lokale Azure-Anmeldung im Plattform-Tenant
+Azure-DevOps-Zugriff verifiziert
+```
+
+Der Lauf stoppte anschließend vor der Core-Verarbeitung an einer fehlerhaften internen PowerShell-Parameterübergabe. Die Ursache war Array-Splatting für benannte Parameter bei `.ps1`-Aufrufen. Diese Fehlerklasse ist in `main` code-seitig auf Hashtable-Splatting korrigiert worden.
+
+Betroffen und korrigiert:
+
+```text
+Initialize-BSSEPlatformDependencies.ps1
+Start-BSSECustomerOnboarding.ps1
+pipelines/customer-onboarding.yml
+```
+
+Der korrigierte Dependency-Dry-Run ist erneut auszuführen. Aus dem ersten Lauf wird ausdrücklich keine erfolgreiche Entra-/WIF-/Service-Connection-/Project-Branding-Runtime-Verifikation abgeleitet.
+
 ## 11. Customer-Onboarding / Dual Runtime
 
 ### Zentraler Technikerweg
@@ -539,7 +563,7 @@ BLOCKED / Fehler         → NOT READY
 
 ### Freigegebene Source Assets
 
-Die angehängte Branding-ZIP wurde geprüft. Sie enthält exakt:
+Die angehängte Branding-ZIP wurde geprüft und die fünf freigegebenen PNGs sind inzwischen in `main` versioniert:
 
 ```text
 assets/project-icons/00-platform.png
@@ -549,7 +573,7 @@ assets/project-icons/99-lab.png
 assets/project-icons/cust-generic.png
 ```
 
-Alle fünf Dateien sind valide PNGs (1254×1254, RGB). Die Originalgrößen und SHA-256-Werte sind im Regressionstest fixiert.
+Alle fünf Dateien sind valide PNGs (1254×1254, RGB). Die im Git-Tree vorhandenen Dateien wurden anhand Dateigröße und Git-Blob-Inhalt gegen die zuvor geprüften Originaldateien abgeglichen. Die Originalgrößen und SHA-256-Werte sind zusätzlich im Regressionstest fixiert.
 
 ### Verbindliches Mapping
 
@@ -616,18 +640,33 @@ docs/Project-Branding.md
 - idempotente Project-Property-Markerstrategie,
 - Core-/Customer-Provisionierungsintegration des Brandings,
 - Branding-Asset-/Mapping-Regressionstest,
-- README-/Techniker-/Branding-Dokumentation.
+- fünf freigegebene Branding-PNGs unter `assets/project-icons/`,
+- README-/Techniker-/Branding-Dokumentation,
+- sichere benannte Parameterübergabe zwischen Bootstrap-Skripten per Hashtable-Splatting in Initializer, lokalem Frontend und Customer-Onboarding-Pipeline.
+
+### Bereits runtime-verifiziert
+
+Der erste reale lokale Self-Hosting-Dry-Run hat folgende Voraussetzungen bestätigt:
+
+- Azure CLI gefunden,
+- Azure-DevOps-CLI-Erweiterung verfügbar,
+- Organisationsprofil / Ziel-Tenant korrekt erkannt,
+- lokale Azure-Anmeldung im erwarteten Plattform-Tenant,
+- Azure-DevOps-Zugriff erfolgreich verifiziert.
 
 ### Für v1.9 noch offen
 
-- die fünf freigegebenen Original-PNGs tatsächlich unter `assets/project-icons/` im Git-Tree von `main` versionieren,
-- `tests/Test-BSSEProjectBranding.ps1` gegen genau diese Git-Dateien ausführen,
-- anschließend den Branding-Stand als v1.9 verifizieren.
+- `tests/Test-BSSEProjectBranding.ps1` gegen die jetzt versionierten Git-Dateien ausführen,
+- korrigierten `Initialize-BSSEPlatformDependencies.ps1` erneut als Dry Run ausführen und den vollständigen Plan prüfen,
+- erst nach sauberem Dry Run den explizit freigegebenen Dependency-Apply durchführen,
+- anschließend Branding- und Self-Hosting-Stand anhand der realen Azure-DevOps-Ergebnisse verifizieren,
+- erst danach v1.9 als verifiziert markieren.
 
 ### Noch nicht runtime-verifiziert
 
-Bis zum echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut bestätigt:
+Bis zum weiteren echten Erstinstallations-/Runtime-Test sind insbesondere nicht absolut bestätigt:
 
+- Core-Verarbeitung nach dem korrigierten internen Script-Aufruf,
 - reale Entra-App/SP-Erstellung im BSSE-Tenant,
 - reales Service-Principal-Entitlement in BSSE-CloudOps,
 - tatsächliche `Create new projects`-ACL-Zuweisung,
