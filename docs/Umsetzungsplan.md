@@ -1,11 +1,12 @@
 # Umsetzungsplan – BSSE Azure DevOps Platform
 
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
-**Version:** 1.9 Candidate
+**Version:** 1.9 Candidate  
+**Stand:** 2026-08-13
 
-> `main` ist der Arbeits- und Source-of-Truth-Branch. Die fünf freigegebenen Project-Branding-PNGs sind versioniert und gegen die zuvor geprüften Originaldateien abgeglichen. Der reale Core-Branding-Apply inklusive SHA-256-Marker-Verifikation ist für `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` bestätigt; ein Folge-Apply erkennt alle vier Zustände idempotent als `EXISTS`. Entra-App/SP, Azure-DevOps-Entitlement sowie `Create new projects = Allow` sind inzwischen ebenfalls real erzeugt bzw. verifiziert. v1.9 bleibt Candidate, bis Branding-Regressionstest, WIF-Service-Connection/FIC/Pipeline-Autorisierung, WIF-Pipeline-Run und der abschließende idempotente Dependency-Verify erfolgreich verifiziert wurden.
+> `main` ist der Arbeits- und Source-of-Truth-Branch. Dieser Plan enthält die bindenden Architekturentscheidungen, den bestätigten Runtime-Stand und die offenen Umsetzungsschritte. Detaildiagnosen werden in den zugehörigen Fachdokumentationen gepflegt. Eine Phase gilt erst als abgeschlossen, wenn Fachdokumentation und dieser kanonische Plan denselben bestätigten Status enthalten.
 
-## 1. Core
+## 1. Zielarchitektur
 
 ```text
 00-Platform
@@ -25,623 +26,101 @@
 └── Shared-IaC-Modules
 
 99-LAB
+├── LabConfiguration
+└── LabDocumentation
+
+CUST-<CustomerNumber>-<CustomerSlug>
+├── CustomerConfiguration
+├── Documentation
+└── Firewall-<CustomerSlug>-<SiteSlug>   # 0..n
 ```
 
-## 1.1 `00-Platform` Repositories
+### Verantwortungsgrenzen
 
-### `PlatformBootstrap`
+`00-Platform` stellt die gemeinsame technische Plattform bereit.  
+`10-Automation` enthält Collector-/Sanitization-/Normalisierungslogik.  
+`20-IaC` enthält getrennte Deployment-Produkte.  
+`99-LAB` ist die Integrations-/E2E-Stufe vor realen Kunden.  
+`CUST-*` ist die kundenbezogene technische Boundary.
 
-Source of Truth für Aufbau und Weiterentwicklung der Azure-DevOps-Plattform.
+`PlatformBootstrap` provisioniert `CUST-*` und die Onboarding-Voraussetzungen. Die finale Knowledge-Base-/Publishing-Architektur wird ausschließlich in `00-Platform / DocumentationEngine` entschieden und umgesetzt.
 
-Enthält:
+## 2. Kundenidentität und Customer Boundary
 
-- Core-Bootstrap,
-- Self-Hosting-/Dependency-Initialisierung,
-- Kunden-Onboarding,
-- Firewall-Repo-Onboarding,
-- gemeinsame Azure-DevOps-CLI-Authentifizierungslogik,
-- verwaltetes Azure-DevOps-Project-Branding,
-- versionierte Branding-Assets,
-- Organisationsprofile,
-- Namenskonventionen,
-- Plattform-/Security-Dokumentation,
-- zentralen Techniker-Onboarding-Workflow als Azure Pipeline,
-- lokales interaktives Onboarding-Frontend,
-- kontrollierte `CustomerConfiguration`-Persistenz,
-- Pipeline-Registrierungs- und Readiness-Skripte.
-
-### `PipelineTemplates`
-
-Zentrale YAML-Templates für Azure Pipelines.
-
-### `DocumentationEngine`
-
-Gemeinsame Erzeugung von Markdown, DOCX, PDF und weiteren Dokumentationsformaten.
-
-### `SecurityValidation`
-
-Wiederverwendbare Sicherheits-, Read-only-, Sanitization- und Secret-Prüfungen.
-
-### `SharedModules`
-
-Technische Bibliotheken, die von mehreren Automationen/IaC-Komponenten verwendet werden.
-
-## 2. Kundenidentität
+Verbindliches Namensschema:
 
 ```text
 CUST-<CustomerNumber>-<CustomerSlug>
 ```
 
-Die interne Kunden-/Debitorennummer ist die führende, stabile technische ID.
+Die Kunden-/Debitorennummer ist die stabile technische ID. Ein bereits existierendes `CUST-<CustomerNumber>-*` wird bei Umfirmierung wiederverwendet; mehrere Treffer sind `BLOCKED`.
 
-## 3. Kundenprojekt
-
-Mindeststruktur:
+Mindest-Repositories:
 
 ```text
-CUST-<ID>-<Name>
-├── CustomerConfiguration
-└── Documentation
+CustomerConfiguration
+Documentation
 ```
 
-Optional pro OPNsense:
+Optional pro Firewall:
 
 ```text
-├── Firewall-<Name>-HQ
-├── Firewall-<Name>-Branch01
-└── ...
+Firewall-<CustomerSlug>-<SiteSlug>
 ```
 
-Jedes verwaltete `CUST-*`-Projekt soll automatisch das generische Customer-Project-Icon aus `assets/project-icons/cust-generic.png` erhalten.
+Firewall-Repositories sind RAW-CONFIDENTIAL und bleiben bei Bootstrap-Erstellung vollständig leer. Kein README, keine `.gitignore`, kein Initial-Commit.
 
-### 3.1 Verbindliche Abhängigkeit zu `00-Platform / DocumentationEngine`
+## 3. Dokumentationsplattform vs. IaC
 
-Der `PlatformBootstrap` provisioniert die für das `Customer-Onboarding` sowie für nachgelagerte Infrastruktur-Onboarding-Prozesse benötigte `CUST-*`-Grundstruktur und deren technische Voraussetzungen.
-
-Dazu gehören insbesondere die vom Bootstrap verwalteten Projekt-/Repository-Strukturen, Basis-Konfigurationen, Branding-, Berechtigungs- und Onboarding-Voraussetzungen.
-
-Die **finale Knowledge-Base-/Publishing-Architektur** ist dagegen ausdrücklich **keine Verantwortung des PlatformBootstrap**.
-
-Diese Architektur wird im Unterprojekt:
-
-```text
-00-Platform / DocumentationEngine
-```
-
-entschieden und umgesetzt.
-
-Damit gilt als feste Verantwortungsgrenze:
-
-```text
-PlatformBootstrap
-→ provisioniert CUST-* Boundary und Onboarding-Voraussetzungen
-→ schafft die technische Zielstruktur für nachgelagerte Prozesse
-→ entscheidet NICHT über die finale Knowledge-Base-/Publishing-Architektur
-
-DocumentationEngine
-→ definiert die finale Knowledge-Base-/Publishing-Architektur
-→ verarbeitet die dafür vorgesehenen normalisierten Daten
-→ verantwortet die Dokumentgenerierung und spätere Publishing-Zielarchitektur
-```
-
-Änderungen an der finalen Ablage-, Knowledge-Base- oder Publishing-Struktur dürfen daher nicht isoliert im Bootstrap neu entworfen werden. Sie sind als Abhängigkeit aus dem Unterprojekt `00-Platform / DocumentationEngine` zu übernehmen.
-
-## 4. OPNsense RAW Backup
-
-### Festlegung
-
-**Eine OPNsense = ein dediziertes RAW-Git-Repository.**
-
-Dieses Repository:
-
-- liegt im Azure-DevOps-Kundenprojekt,
-- ist ausschließlich Upstream für `os-git-backup`,
-- enthält die RAW `config.xml` und ihre Git-Historie,
-- wird vom Bootstrap leer erzeugt,
-- erhält vom Bootstrap niemals README, `.gitignore`, YAML oder Initial-Commit.
-
-Das Repository `10-Automation-OPNsenseDocumentation` enthält ausschließlich generischen Programmcode für Sanitization, Validierung und Normalisierung.
-
-### Datenfluss
-
-```text
-CUST-xxx/Firewall-*
-    ↓ RAW
-10-Automation / 10-Automation-OPNsenseDocumentation
-    ↓ Sanitize
-    ↓ Validate
-    ↓ Normalize
-00-Platform / DocumentationEngine
-    ↓
-CUST-xxx / Documentation
-```
-
-## 5. Mehrere Firewalls
-
-```text
-CUST-4711-Cannon-Deutschland-GmbH
-├── CustomerConfiguration
-├── Documentation
-├── Firewall-Cannon-Deutschland-GmbH-HQ
-├── Firewall-Cannon-Deutschland-GmbH-Branch01
-└── Firewall-Cannon-Deutschland-GmbH-Branch02
-```
-
-## 6. Verbindliche Trennung: Dokumentationsplattform vs. IaC-Produkte
-
-### Dokumentationsplattform
+### Customer-/Dokumentations-Onboarding
 
 ```text
 AzureDocumentation
 OPNsenseDocumentation
 ```
 
-Diese Fähigkeiten gehören zum Customer-/Dokumentations-Onboarding und verwenden die Read-only-/Sanitization-Kette der Dokumentationsplattform.
-
-### IaC-Produkte
+### Getrennte IaC-Produkte
 
 ```text
-AVD-Accelerator
-Vaultwarden
+20-IaC / AVD-Accelerator
+20-IaC / Vaultwarden
 ```
 
-Sie sind IaC-Produkte unter `20-IaC` und werden über separate Deployment-Workflows behandelt.
+AVD und Vaultwarden sind keine Customer-Onboarding-Module und werden weder von `New-BSSECustomerProject.ps1` noch von `customer-onboarding.yml` provisioniert.
 
-Damit gilt ausdrücklich:
-
-- `New-BSSECustomerProject.ps1` provisioniert keine AVD- oder Vaultwarden-Deployments.
-- `pipelines/customer-onboarding.yml` bietet keine AVD-/Vaultwarden-Auswahl an.
-- Customer-Onboarding und IaC-Deployment verwenden getrennte Service Connections und Sicherheitsmodelle.
-- IaC folgt `Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify`.
-
-## 7. Security
-
-`Firewall-*` erhält eine höhere Schutzklasse als normales `CustomerConfiguration`.
-
-Für die Dokumentationsplattform bleiben vorgesehen:
-
-- Repository-Zugriff nur für definierte Admins und Pipeline-Identität,
-- kein allgemeiner Contributor-Zugriff auf RAW-Repositories,
-- kein Raw-Config-Publishing,
-- Sanitization/Validation vor Dokumentation/KI.
-
-IaC verwendet getrennte Deployment-Identitäten und darf nicht über die Dokumentations-/Customer-Onboarding-Identität deployen.
-
-### PlatformBootstrap-Identität
-
-Zielidentität:
-
-```text
-sp-bsse-platform-bootstrap-azdo
-```
-
-Ziel-Service-Connection:
-
-```text
-sc-platform-bootstrap-azdo
-```
-
-Least-Privilege-Zustand:
-
-- secretless Entra-App/Service Principal,
-- `Basic` in Azure DevOps,
-- `00-Platform / Readers`,
-- Collection-Berechtigung `Create new projects = Allow`,
-- **keine** Mitgliedschaft in `Project Collection Administrators`,
-- WIF-Service-Connection ausschließlich für `Customer-Onboarding` autorisiert.
-
-Ein vorhandenes Deny oder widersprüchliche bestehende Identitäts-/Endpointkonfiguration wird nicht automatisch überschrieben.
-
-### Project Branding
-
-Für Project Branding wird kein separates Credential eingeführt. Die bestehende lokale bzw. Pipeline-Authentifizierung wird wiederverwendet.
-
-Die offizielle `Set Project Avatar`-API dokumentiert den OAuth-Scope `vso.project_manage`. Für den idempotenten SHA-256-Marker werden zusätzlich Project Properties gelesen und geschrieben; die ausführende Identität benötigt dafür die entsprechende Projektberechtigung (`Manage project properties`).
-
-Branding-Fehler werden nicht zu einer reinen Warning degradiert. Asset-, Project-ID-, Berechtigungs-, Avatar-API- oder Marker-Validierungsfehler blockieren den betroffenen Bootstrap-Lauf. Bereits zuvor erfolgreich erzeugte Azure-DevOps-Objekte werden nicht gelöscht oder zurückgerollt.
-
-## 8. Idempotenz / Bestandsschutz
-
-Erneute Bootstrap-Läufe:
-
-- überschreiben keine bestehenden Repositories,
-- löschen keine bestehenden Repositories,
-- schreiben nichts in `Firewall-*`,
-- erstellen nur fehlende Soll-Repositories,
-- erzeugen bei bekannten Legacy-Namen keine Duplikate,
-- überschreiben keine abweichenden vorhandenen `CustomerConfiguration`-Bootstrapdateien,
-- schreiben Project Avatars nicht erneut, wenn der verwaltete Asset-Hash-Marker bereits dem Sollzustand entspricht.
-
-Für `CustomerConfiguration` gilt:
-
-```text
-fehlend    → PLAN / ADD
-identisch  → EXISTS
-abweichend → BLOCKED
-```
-
-Für Project Branding gilt:
-
-```text
-Asset fehlt/ungültig
-→ BLOCKED
-
-Projekt noch nicht vorhanden (Dry Run)
-→ PLAN Avatar nach Projekterstellung
-
-Project-Avatar-SHA-Marker fehlt/abweichend
-→ PLAN / bei Apply SET + Marker-Verify
-
-Project-Avatar-SHA-Marker identisch
-→ EXISTS / kein Avatar-Write
-
-Avatar-API / Marker-Write / Marker-Readback fehlerhaft
-→ BLOCKED
-```
-
-Die aktuell dokumentierte Azure-DevOps-Core-API bietet keinen Project-Avatar-GET-Readback. Deshalb wird als verwalteter Marker folgende Project Property verwendet:
-
-```text
-BSSE.PlatformBootstrap.ProjectAvatarSha256
-```
-
-Bekannte Grenze: Eine manuelle Avatar-Änderung außerhalb von PlatformBootstrap kann bei unverändertem Marker nicht zuverlässig erkannt werden. Es wird bewusst kein undokumentierter Readback-Endpoint verwendet.
-
-Für die Self-Hosting-Ausführungsquelle gilt:
-
-```text
-Azure PlatformBootstrap leer
-→ PLAN / Seed aus lokalem committed HEAD
-
-Azure main == lokaler committed HEAD
-→ EXISTS
-
-lokaler Working Tree dirty
-→ BLOCKED
-
-Azure main != lokaler committed HEAD
-→ BLOCKED
-
-nicht-leeres Azure Repo ohne main
-→ BLOCKED
-```
-
-Es gibt keinen automatischen Force-Push.
-
-## 9. Repositorynamen im Projekt `10-Automation`
-
-### Beschlossen
-
-```text
-10-Automation-AzureInfrastructureCollector
-10-Automation-OPNsenseDocumentation
-```
-
-Die fachlichen Komponentenbezeichnungen bleiben:
-
-```text
-AzureInfrastructureCollector
-OPNsenseDocumentation
-```
-
-Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konvention für andere Projekte.
-
-## 10. Self-Hosting Bootstrap / Erstinitialisierung
-
-### Beschlossen
-
-Eine neue Plattform besitzt zu Beginn noch keine zentrale Customer-Onboarding-Pipeline und keine dafür nutzbare WIF-Service-Connection. Der allererste Lauf erfolgt daher lokal.
-
-Das lokale Frontend prüft automatisch vor der Kundenabfrage:
-
-```text
-bootstrap/Initialize-BSSEPlatformDependencies.ps1
-```
-
-Ablauf:
-
-```text
-Start-BSSECustomerOnboarding.ps1
-    ↓
-Dependency Dry Run
-    ↓
-Dependencies vollständig?
- ├─ Ja → Customer-Onboarding
- └─ Nein
-      ↓
-PLATFORM INITIALIZATION REQUIRED
-      ↓
-separate lokale Freigabe
-      ↓
-Dependency Apply
-      ↓
-Dependency Verify
-      ↓
-Customer-Onboarding
-```
-
-### Was automatisch als Dependency behandelt wird
-
-```text
-Core-Projekte/-Repositories inkl. Project Branding
-00-Platform/PlatformBootstrap Seed
-sp-bsse-platform-bootstrap-azdo
-Azure-DevOps-Service-Principal-Entitlement
-Basic + 00-Platform/Readers
-Create new projects = Allow
-sc-platform-bootstrap-azdo (WIF)
-fic-sc-platform-bootstrap-azdo
-Customer-Onboarding Pipeline
-pipeline-spezifische Service-Connection-Autorisierung
-```
-
-### Was nicht automatisch erzeugt wird
-
-Die Azure-DevOps-Organisation selbst ist eine äußere Voraussetzung und muss bereits existieren.
-
-Der lokale Erstinstallations-Administrator muss außerdem bereits über die notwendigen Entra-/Azure-DevOps-Rechte verfügen. Der Bootstrap erhöht die Rechte des ausführenden Administrators nicht selbst.
-
-### Privilege-Boundary
-
-`Initialize-BSSEPlatformDependencies.ps1 -Apply` ist aus Azure Pipelines blockiert.
-
-Damit gilt:
-
-```text
-lokaler Erstinstallations-Admin
-→ darf nach Dry Run + expliziter Freigabe Plattform-Dependencies herstellen
-
-Customer-Onboarding Pipeline
-→ darf vorhandene Dependencies verwenden
-→ darf sich selbst keine Identität oder organisationsweiten Rechte geben
-```
-
-### Runtime-Schema für Azure-DevOps-WIF
-
-Der neue Azure-DevOps-Service-Connection-Typ wird nicht mit einem geratenen undokumentierten JSON-Schema hartcodiert.
-
-Der Bootstrap fragt die Service-Endpoint-Type-Metadaten der Zielorganisation ab und akzeptiert ausschließlich einen eindeutigen `Azure DevOps`-Endpoint mit `WorkloadIdentityFederation`.
-
-Für `InputDescriptor.validation` gilt:
-
-```text
-validation fehlt
-→ kein Required-Flag vorhanden
-
-validation vorhanden, isRequired fehlt
-→ nicht als Pflichtfeld behandeln
-
-validation.isRequired == true
-→ unbekannter Input bleibt Fail Closed / BLOCKED
-```
-
-Für die typspezifischen Service-Endpoint-Daten gilt zusätzlich:
-
-```text
-ServiceEndpoint.data startet leer
-→ ausschließlich EndpointType.inputDescriptors werden übernommen
-
-creationMode
-→ kein pauschales Default-Feld
-→ nur wenn Azure DevOps selbst einen Descriptor mit id=creationMode liefert
-
-unbekannter explizit erforderlicher Descriptor
-→ Fail Closed / BLOCKED
-```
-
-Damit werden optionale Azure-DevOps-Metadaten unter StrictMode robust verarbeitet und keine nicht deklarierten typspezifischen Inputs erzeugt.
-
-### Runtime-Teststand 13.08.2026
-
-Die lokalen Self-Hosting-Tests haben schrittweise folgende Punkte real bestätigt:
-
-```text
-Azure CLI verfügbar
-Azure-DevOps-CLI-Erweiterung verfügbar
-Organisationsprofil / Ziel-Tenant erkannt
-lokale Azure-Anmeldung im Plattform-Tenant
-Azure-DevOps-Zugriff verifiziert
-Core-Bootstrap-Aufruf funktioniert
-alle vier Core-Projekte vorhanden
-alle erwarteten Core-Repositories vorhanden
-verwaltetes Branding für 00-Platform, 10-Automation, 20-IaC und 99-LAB angewendet
-SHA-256-Marker für alle vier Core-Projekte geschrieben und gelesen
-Folge-Apply erkennt alle vier Branding-Zustände als EXISTS
-lokaler PlatformBootstrap Working Tree sauber
-Azure 00-Platform/PlatformBootstrap main == lokaler committed HEAD
-sp-bsse-platform-bootstrap-azdo real als passwordless Entra App/Service Principal erstellt
-Azure DevOps Entitlement real erstellt
-Basic + 00-Platform/Readers anschließend als EXISTS verifiziert
-Collection-ACL-Struktur real ausgewertet
-Create new projects = Allow real vergeben
-Create new projects unmittelbar nach der Vergabe erfolgreich verifiziert
-späterer Apply erkennt Create new projects = Allow idempotent als EXISTS
-Azure-DevOps-Service-Endpoint-Typ Azure DevOps + WorkloadIdentityFederation real eindeutig erkannt
-Service-Connection-Create-Aufruf real erreicht
-```
-
-Während dieser Testfolge wurden mehrere PowerShell-/REST-Runtime-Fehlerklassen gefunden und direkt in `main` korrigiert:
-
-```text
-benannte Parameter bei internen .ps1-Aufrufen
-→ Hashtable-Splatting statt String-Array-Splatting
-
-0/1-Treffer aus ConvertFrom-Json + Where-Object unter StrictMode
-→ Ergebnis explizit als Array materialisieren
-
-JsonPatchDocument mit genau einer Operation
-→ nicht über die PowerShell-Pipeline zu ConvertTo-Json senden
-→ Array über ConvertTo-Json -InputObject serialisieren
-→ vor dem REST-Aufruf zusätzlich sicherstellen, dass der Body mit '[' beginnt
-
-az devops security permission list --output json
-→ nicht als flache Tokenliste mit effectiveAllow/effectiveDeny behandeln
-→ ACL.acesDictionary auflösen
-→ AccessControlEntry.extendedInfo.effectiveAllow/effectiveDeny normalisieren
-→ unbekanntes/mehrdeutiges Format weiterhin Fail Closed
-
-Service-Endpoint InputDescriptor unter StrictMode
-→ validation/isRequired nicht als zwingend vorhandene Property voraussetzen
-→ explizites isRequired == true bleibt Fail Closed
-
-Service-Endpoint data.creationMode
-→ nicht pauschal als Manual setzen
-→ Azure DevOps akzeptiert nur Inputs, die im Contribution-/Endpoint-Typ definiert sind
-→ ServiceEndpoint.data wird ausschließlich aus real gelieferten inputDescriptors aufgebaut
-```
-
-Beim Entra→Azure-DevOps-Übergang wurde außerdem real ein transienter Materialisierungszustand beobachtet:
-
-```text
-unmittelbar nach Entra-SP-Erstellung
-→ ServicePrincipalEntitlements POST
-→ VS403283: Could not add user '<object-id>' at this time.
-
-unveränderter Wiederholungslauf nach kurzer Wartezeit
-→ Entitlement erfolgreich
-→ Basic + 00-Platform/Readers verifiziert
-```
-
-Damit ist für diesen konkreten Lauf bestätigt, dass `VS403283` transient durch die frisch erzeugte Identität auftreten kann. Der Bootstrap besitzt dafür nun einen begrenzten Retry ausschließlich auf diesen erkannten Fehlerfall; persistente oder andere Entitlement-Fehler bleiben Fail Closed.
-
-Nach der ACL-Korrektur wurde der vollständige Dependency-Dry-Run ohne `BLOCKED`/Exception beendet. Der anschließende Apply setzte `Create new projects = Allow` erfolgreich und erreichte erstmals die reale Service-Endpoint-Konfiguration. Dort stoppte er zunächst, weil mindestens ein von Azure DevOps gelieferter InputDescriptor zwar `validation`, aber keine Property `isRequired` besaß. Nach der StrictMode-Korrektur erreichte der nächste Apply den tatsächlichen `az devops service-endpoint create`-Aufruf. Azure DevOps lehnte dort das pauschal gesetzte `creationMode` mit der eindeutigen Meldung ab, dass nur im Contribution Type definierte Inputs erlaubt sind. Dieser Befund ist jetzt code-seitig durch ausschließlich descriptor-basierte `data`-Erzeugung umgesetzt; der erneute Runtime-Apply steht noch aus.
-
-## 11. Customer-Onboarding / Dual Runtime
-
-### Zentraler Technikerweg
-
-```text
-Techniker
-    ↓
-Azure DevOps / Run pipeline
-    ↓
-Customer-Onboarding
-    ↓
-Validate
-    ↓
-Dry Run Customer Boundary + Project Branding
-    ↓
-Dry Run CustomerConfiguration
-    ↓
-Manual Approval nur bei Änderungen
-    ↓
-Apply
-    ↓
-Post-Apply Verify
-```
-
-### Lokaler Entwicklungs-/Regressionstestweg
-
-```text
-bootstrap/Start-BSSECustomerOnboarding.ps1
-```
-
-Nach erfolgreicher Dependency-Prüfung verwendet er dieselben fachlichen Parameter und Backend-Bausteine wie die Pipeline.
-
-Beide Wege verwenden:
-
-```text
-bootstrap/New-BSSECustomerProject.ps1
-bootstrap/Sync-BSSECustomerConfiguration.ps1
-```
-
-Project Branding ist Bestandteil von `New-BSSECustomerProject.ps1` und benötigt keinen separaten Techniker-Schritt.
-
-### Authentifizierung
-
-`BSSE.AzureDevOps.Common.ps1` unterscheidet:
-
-```text
-Local
-Pipeline
-```
-
-Local:
-- vorhandenen Azure-CLI-Kontext verwenden,
-- passenden gecachten Tenant-/Subscription-Kontext suchen,
-- bei Bedarf gezielten interaktiven Login durchführen,
-- Browser-Fallback ausschließlich lokal zulassen.
-
-Pipeline:
-- keine interaktive Anmeldung,
-- kein Browser-Fallback,
-- AzureCLI@3 mit Azure-DevOps-Service-Connection/WIF verwenden,
-- optional `SYSTEM_ACCESSTOKEN` als Kompatibilitätsfallback,
-- andernfalls Fail Closed.
-
-### Pipeline-Parameter
-
-```text
-CustomerNumber
-CustomerName
-CustomerSlug
-TenantId
-AzureDocumentation
-OPNsenseDocumentation
-Firewalls
-```
-
-AVD und Vaultwarden sind bewusst ausgeschlossen. Ein Project-Icon-Parameter existiert bewusst nicht.
-
-### Pipeline-Stages
+IaC-Zielkette:
 
 ```text
 Validate
-DryRun
-Approval
-Apply
-Verify
+→ Lint / Security
+→ Plan / What-If
+→ Approval
+→ Deploy
+→ Verify
 ```
 
-`DryRun` prüft Kundenboundary einschließlich Project Branding sowie `CustomerConfiguration` und setzt `hasChanges`. Ohne `[PLAN]` werden Approval und Apply übersprungen.
+IaC verwendet eigene Deployment-Identitäten und Service Connections.
 
-`Verify` bricht bei verbleibendem `[PLAN]`, `[CREATE]`, `[RENAME]` oder `[BLOCKED]` ab. Ein korrekt gesetzter Branding-Marker muss deshalb im Verify als `EXISTS` erscheinen.
-
-## 12. Persistente CustomerConfiguration
-
-Implementiert über:
+## 4. OPNsense-Datenfluss
 
 ```text
-bootstrap/Sync-BSSECustomerConfiguration.ps1
+CUST-xxx / Firewall-* RAW
+        ↓
+10-Automation / OPNsenseDocumentation
+        ↓ Sanitize
+        ↓ Validate
+        ↓ Secret Check
+        ↓ Normalize
+00-Platform / DocumentationEngine
+        ↓
+finale Dokumentation / Publishing-Ziel gemäß DocumentationEngine
 ```
 
-Das Skript:
+RAW-Konfigurationen dürfen nicht direkt in Dokumentation oder KI-Verarbeitung übernommen werden.
 
-- ermittelt das stabile `CUST-<CustomerNumber>-*`-Projekt,
-- erzeugt den erwarteten Dokumentations-Scaffold,
-- vergleicht die Bootstrap-Zieldateien mit `CustomerConfiguration`,
-- fügt nur fehlende Dateien hinzu,
-- blockiert abweichende vorhandene Zieldateien,
-- nutzt Git-Historie statt blindem Überschreiben,
-- verwendet OAuth-/Entra-Token ohne Token in der Remote-URL.
+## 5. Project Branding
 
-## 13. Pipeline-Registrierung und Readiness
-
-Pipeline-Registrierung:
-
-```text
-bootstrap/Register-BSSECustomerOnboardingPipeline.ps1
-```
-
-Readiness:
-
-```text
-bootstrap/Test-BSSECustomerOnboardingReadiness.ps1
-```
-
-Der Readiness-Check verwendet den Self-Hosting-Dependency-Bootstrap ausschließlich im Dry-Run-/Verify-Modus.
-
-```text
-kein PLAN / kein BLOCKED → READY
-PLAN                    → Dependency fehlt
-BLOCKED / Fehler         → NOT READY
-```
-
-## 14. Project Branding
-
-### Freigegebene Source Assets
-
-Die angehängte Branding-ZIP wurde geprüft und die fünf freigegebenen PNGs sind inzwischen in `main` versioniert:
+Versionierte Assets:
 
 ```text
 assets/project-icons/00-platform.png
@@ -651,9 +130,7 @@ assets/project-icons/99-lab.png
 assets/project-icons/cust-generic.png
 ```
 
-Alle fünf Dateien sind valide PNGs (1254×1254, RGB). Die im Git-Tree vorhandenen Dateien wurden anhand Dateigröße und Git-Blob-Inhalt gegen die zuvor geprüften Originaldateien abgeglichen. Die Originalgrößen und SHA-256-Werte sind zusätzlich im Regressionstest fixiert.
-
-### Verbindliches Mapping
+Mapping:
 
 ```text
 00-Platform   → 00-platform.png
@@ -663,163 +140,364 @@ Alle fünf Dateien sind valide PNGs (1254×1254, RGB). Die im Git-Tree vorhanden
 CUST-*        → cust-generic.png
 ```
 
-Zentrale wiederverwendbare Komponente:
+Idempotenz-Marker:
 
 ```text
-bootstrap/BSSE.AzureDevOps.Branding.ps1
+BSSE.PlatformBootstrap.ProjectAvatarSha256
 ```
 
-Validierung:
+Runtime bestätigt:
+
+- Avatar-PUT für alle vier Core-Projekte erfolgreich,
+- reale Azure-DevOps-Antwort HTTP 204 wird als Erfolg akzeptiert,
+- Project-Property-Marker erfolgreich geschrieben und gelesen,
+- Folge-Apply erkennt alle vier Core-Branding-Zustände als `EXISTS`.
+
+Bekannte Grenze: Externe manuelle Avatar-Änderungen können ohne dokumentierten Avatar-GET bei unverändertem Marker nicht zuverlässig erkannt werden.
+
+## 6. Self-Hosting-Erstinitialisierung
+
+Der erste Plattformlauf erfolgt lokal. Ziel ist anschließend der zentrale Technikerweg über Azure DevOps.
 
 ```text
-Asset-Mapping
-→ Asset vorhanden
-→ PNG-Signatur
-→ SHA-256
-→ Projekt / Project-ID
-→ bestehender Hash-Marker
-→ bei Bedarf Avatar PUT
-→ HTTP 200 oder 204
-→ JsonPatchDocument als Array serialisieren
-→ Hash-Marker PATCH
-→ Hash-Marker GET / exakte Verifikation
+lokaler Administrator
+        ↓
+Initialize-BSSEPlatformDependencies.ps1
+        ↓
+Core-Projekte/-Repos
+PlatformBootstrap-Ausführungsquelle
+Entra-Plattformidentität
+Azure-DevOps-Entitlement
+Collection-Berechtigung
+WIF-Service-Connection
+FIC
+Pipeline-Registrierung/-Autorisierung
 ```
 
-Die offizielle API-Dokumentation nennt für `Set Project Avatar` HTTP 200. Der reale BSSE-CloudOps-Apply lieferte am 13.08.2026 HTTP 204. PlatformBootstrap akzeptiert daher explizit beide erfolgreichen Antworten; eine erfolgreiche HTTP-Antwort allein genügt jedoch nicht für den verwalteten Sollzustand, da anschließend weiterhin der SHA-256-Marker geschrieben und exakt gelesen werden muss.
+`Initialize-BSSEPlatformDependencies.ps1 -Apply` ist in Azure Pipelines ausdrücklich blockiert. Eine Pipeline darf sich ihre eigene Identität oder organisationsweiten Rechte nicht selbst geben.
 
-Der Project-Properties-PATCH erwartet `application/json-patch+json` und einen JSON-Array-Body. PlatformBootstrap serialisiert den ein-elementigen Patch deshalb über `ConvertTo-Json -InputObject` und prüft vor dem Request zusätzlich die Arrayform.
-
-Der reale Apply hat diesen vollständigen Ablauf inzwischen für alle vier Core-Projekte erfolgreich durchlaufen. Der anschließende Apply meldet für alle vier Avatare `EXISTS`, da der verwaltete SHA-256-Marker dem jeweiligen Asset entspricht. Damit sind Avatar-PUT, Marker-PATCH, Marker-GET und die interne Branding-Idempotenz für diese vier Core-Projekte runtime-verifiziert. Die tatsächliche visuelle Darstellung in der Azure-DevOps-UI bleibt separat zu bestätigen.
-
-Regressionstest:
+### Source Guard
 
 ```text
-tests/Test-BSSEProjectBranding.ps1
+lokaler Working Tree dirty
+→ BLOCKED
+
+Azure PlatformBootstrap leer
+→ Seed aus lokalem committed HEAD zulässig
+
+Azure main == lokaler committed HEAD
+→ EXISTS
+
+Azure main != lokaler committed HEAD
+→ BLOCKED
 ```
 
-Details und API-/Idempotenzgrenzen:
+Kein automatischer Force-Push.
+
+## 7. Plattformidentität
+
+Zielidentität:
 
 ```text
-docs/Project-Branding.md
+sp-bsse-platform-bootstrap-azdo
+```
+
+Zielzustand:
+
+```text
+passwordless Entra App + Service Principal
+Azure DevOps Basic
+00-Platform / Readers
+Create new projects = Allow
+keine Project Collection Administrators-Mitgliedschaft
+```
+
+Runtime bestätigt:
+
+- Entra App/Service Principal real erstellt,
+- `Basic + 00-Platform/Readers` real erzeugt und später als `EXISTS` verifiziert,
+- einmaliger `VS403283` unmittelbar nach Entra-Erstellung als transient bestätigt,
+- begrenzter Retry ausschließlich für diesen bekannten Materialisierungsfall implementiert,
+- Collection-ACL-Struktur real normalisiert,
+- `Create new projects = Allow` real gesetzt, direkt verifiziert und später als `EXISTS` wiedererkannt.
+
+Der Plattform-Service-Principal wird nicht zum Project Collection Administrator gemacht.
+
+## 8. Produktive Azure-DevOps-WIF-Service-Connection
+
+Ziel:
+
+```text
+sc-platform-bootstrap-azdo
+→ Microsoft Entra Workload Identity Federation
+→ sp-bsse-platform-bootstrap-azdo
+```
+
+Zweck: Der zentrale `Customer-Onboarding`-Pipelineweg benötigt eine nicht-interaktive, secretless Azure-DevOps-Identität für CLI-, REST- und Git-Operationen. Die WIF-Service-Connection ist **nicht** Bestandteil der fachlichen Customer-Onboarding-Logik selbst.
+
+Der Endpoint-Typ und seine Inputs werden zur Laufzeit aus Azure DevOps ermittelt. Nicht deklarierte typspezifische Felder werden nicht erfunden. Ein unbekannter explizit erforderlicher Input führt zu Fail Closed.
+
+### Aktueller Status: BLOCKED
+
+Der reale Azure-DevOps-Endpoint-Typ ist:
+
+```text
+workloadidentityuser
+```
+
+Runtime bestätigt:
+
+- Create erreicht den realen Endpoint-Typ,
+- ein fehlgeschlagener Create persistiert einen Draft,
+- Draft enthält gültigen serverseitigen Issuer und FederationSubject,
+- exakt passendes FIC kann in Entra erzeugt und gelesen werden,
+- normales Editieren/PUT des Drafts wird für diesen Endpoint-Typ nicht unterstützt,
+- echter UI-`Finish setup`-Request wurde ermittelt,
+- `Finish setup` scheitert weiterhin Azure-DevOps-seitig mit `App registration or Managed Identity with ObjectId ... was not found in tenant ...`, obwohl der Service Principal real existiert und von Azure DevOps selbst ausgewählt wird,
+- Application Object ID als Alternative wurde ausgeschlossen,
+- `AzureADMyOrg`, Application Administrator, explizites App-Ownership und vorhandenes Service-Principal-Ownership wurden als einfache Ursachen ausgeschlossen.
+
+Produktive WIF-Finalisierung bleibt daher offen. Es werden keine weiteren spekulativen ID-/Payload-Änderungen in den produktiven Bootstrap übernommen.
+
+Fachdokumentation:
+
+```text
+docs/WIF-Blocked-Status.md
+```
+
+### Verifizierter Diagnose-Cleanup
+
+Reihenfolge für Probe-Drafts:
+
+```text
+1. zugehöriges FIC entfernen
+2. organisationsweiter Endpoint-DELETE
+   mit projectIds=<projectId>&deep=false
+3. HTTP 204 / Endpoint-Abwesenheit verifizieren
+```
+
+## 9. Customer-Onboarding – produktiver Zielweg
+
+```text
+Techniker
+    ↓
+Azure DevOps / Customer-Onboarding
+    ↓
+Validate
+    ↓
+Dry Run
+    ↓
+Approval nur bei PLAN
+    ↓
+Apply
+    ↓
+Verify / Idempotenz
+```
+
+Pipeline:
+
+```text
+pipelines/customer-onboarding.yml
+```
+
+Produktive Authentifizierung:
+
+```text
+AzureCLI@3
+connectionType: azureDevOps
+azureDevOpsServiceConnection: sc-platform-bootstrap-azdo
+```
+
+Dieser Weg bleibt bis zur WIF-Klärung auth-seitig BLOCKED.
+
+## 10. Temporärer Azure-DevOps-E2E-Testpfad
+
+Die gemeinsamen Backend-Komponenten unterstützen bereits explizit gemapptes `System.AccessToken` als Pipeline-Kompatibilitätsweg. Project Branding und `CustomerConfiguration`-Git verwenden denselben kurzlebigen Jobtoken, wenn er als `SYSTEM_ACCESSTOKEN` bereitgestellt wird.
+
+Zur isolierten E2E-Validierung während des WIF-BLOCKED-Status existiert getrennt:
+
+```text
+pipelines/customer-onboarding-system-access-token-test.yml
+bootstrap/Register-BSSECustomerOnboardingSystemTokenTestPipeline.ps1
+```
+
+Pipeline-Name:
+
+```text
+Customer-Onboarding-TEST-SystemAccessToken
+```
+
+Regeln:
+
+- verwendet dieselben Backend-Skripte wie der produktive Weg,
+- kein PAT,
+- kein Client Secret,
+- pro Run explizites Opt-in erforderlich,
+- Validate gibt die tatsächlich verwendete Build-Service-Identität aus,
+- Dry Run und Manual Approval bleiben verpflichtend,
+- vor Apply werden effektive Rechte dieser Build-Service-Identität geprüft,
+- keine vorsorgliche breite Administratorberechtigung,
+- Testpfad ersetzt den produktiven WIF-Zielzustand nicht,
+- nach WIF-Klärung wird der Testpfad wieder entfernt oder deaktiviert.
+
+Die Berechtigungen des `System.AccessToken` ergeben sich aus Job Authorization Scope und der tatsächlich verwendeten Build-Service-Identität. Diese Identität ist deshalb vor dem ersten mutierenden Apply anhand des Validate-Outputs eindeutig festzustellen.
+
+## 11. Lokaler Customer-Onboarding-Weg
+
+Backend:
+
+```text
+bootstrap/New-BSSECustomerProject.ps1
+bootstrap/Sync-BSSECustomerConfiguration.ps1
+```
+
+Lokales Frontend:
+
+```text
+bootstrap/Start-BSSECustomerOnboarding.ps1
+```
+
+Der lokale Weg nutzt die angemeldete Administratoridentität und ist fachlich unabhängig von WIF. Die aktuelle Frontend-Readiness koppelt ihn jedoch noch an die vollständigen Self-Hosting-Dependencies; diese Kopplung wird erst geändert, wenn der temporäre Betriebsweg ausdrücklich als dauerhaft notwendig beschlossen wird. Bis dahin ist die produktive WIF-Abhängigkeit nicht stillschweigend degradiert.
+
+## 12. CustomerConfiguration
+
+`Sync-BSSECustomerConfiguration.ps1` verwaltet den Bootstrap-Sollzustand kontrolliert:
+
+```text
+fehlend    → PLAN / ADD
+identisch  → EXISTS
+abweichend → BLOCKED
+```
+
+Eigenschaften:
+
+- stabiles `CUST-<CustomerNumber>-*` wird ermittelt,
+- nur fehlende Bootstrap-Zieldateien werden ergänzt,
+- abweichende vorhandene Dateien werden nicht überschrieben,
+- Git-Historie statt blindem Write,
+- OAuth-/Entra-/System.AccessToken wird nicht in Remote-URLs persistiert.
+
+## 13. Pipeline-Registrierung und Readiness
+
+Produktive Registrierung:
+
+```text
+bootstrap/Register-BSSECustomerOnboardingPipeline.ps1
+```
+
+Temporäre Testregistrierung:
+
+```text
+bootstrap/Register-BSSECustomerOnboardingSystemTokenTestPipeline.ps1
+```
+
+Readiness:
+
+```text
+bootstrap/Test-BSSECustomerOnboardingReadiness.ps1
+```
+
+Produktiver Readiness-Zustand:
+
+```text
+kein PLAN / kein BLOCKED → READY
+PLAN                    → Dependency fehlt
+BLOCKED / Fehler         → NOT READY
+```
+
+Solange die produktive WIF-Service-Connection BLOCKED ist, ist der produktive zentrale Weg nicht vollständig READY. Die TEST-Pipeline ist davon getrennt.
+
+## 14. Promotion / Testreihenfolge
+
+Beschlossen:
+
+```text
+Development
+→ 99-LAB
+→ CUST-00000 BSSE
+→ Pilotkunde
+→ weitere Kunden
+```
+
+Cannon wird erst nach LAB-/BSSE-E2E als Pilot verwendet.
+
+BSSE:
+
+```text
+CustomerNumber: 00000
+Project: CUST-00000-Bernd-Schneider-Software-Engineering-GmbH
+Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 ```
 
 ## 15. Implementierungsstatus
 
 ### Bereits beschlossen
 
-- Dokumentationsplattform und IaC strikt getrennt.
-- Normaler Technikerweg erfolgt zentral über Azure DevOps.
-- Erstinitialisierung einer neuen Plattform erfolgt lokal.
-- Plattform-Dependencies werden als idempotenter Sollzustand behandelt.
-- privilegierte Dependency-Änderungen benötigen separaten lokalen Dry Run + Freigabe.
-- Pipeline darf sich nicht selbst privilegieren.
-- Project Branding ist Teil des verwalteten Azure-DevOps-Projekt-Sollzustands.
-- Alle `CUST-*` verwenden zunächst dasselbe generische Customer-Icon.
-- PlatformBootstrap provisioniert die `CUST-*`-Grundstruktur und Onboarding-Voraussetzungen; die finale Knowledge-Base-/Publishing-Architektur wird ausschließlich im Unterprojekt `00-Platform / DocumentationEngine` festgelegt.
+- Zielarchitektur und Repository-Zuordnung,
+- Dokumentations-/IaC-Trennung,
+- CustomerNumber als stabile Kunden-ID,
+- OPNsense RAW pro Firewall in eigenem Repo,
+- lokaler First-Run / zentraler späterer Technikerweg,
+- secretless produktive WIF-Plattformidentität,
+- kein PCA für Plattformidentität,
+- `Basic + 00-Platform/Readers + Create new projects = Allow`,
+- Pipeline darf sich nicht selbst privilegieren,
+- direktes Arbeiten auf `main`,
+- produktiver WIF-Zielzustand bleibt trotz aktuellem Preview-BLOCKED unverändert.
 
-### Code-seitig in `main` implementiert
+### Bereits implementiert
 
-- zentrale Branding-Funktion und Projekt-Mapping,
-- Asset-/PNG-/SHA-256-Validierung,
-- offizielle Project-Avatar-REST-Integration,
-- Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den real beobachteten HTTP-204-Erfolg,
-- idempotente Project-Property-Markerstrategie,
-- Project-Properties-JsonPatchDocument wird auch bei genau einer Operation garantiert als JSON-Array serialisiert und vor dem Request geprüft,
-- Core-/Customer-Provisionierungsintegration des Brandings,
-- Branding-Asset-/Mapping-Regressionstest,
-- fünf freigegebene Branding-PNGs unter `assets/project-icons/`,
-- README-/Techniker-/Branding-Dokumentation,
-- sichere benannte Parameterübergabe zwischen Bootstrap-Skripten per Hashtable-Splatting in Initializer, lokalem Frontend und Customer-Onboarding-Pipeline,
-- robuste Array-Materialisierung für Entra-/Graph-Identitätssuchen unter StrictMode,
-- begrenzter Retry für den real bestätigten transienten Azure-DevOps-Entitlementfehler `VS403283` unmittelbar nach Entra-SP-Erstellung,
-- Normalisierung von `az devops security permission list` aus `acesDictionary` / `AccessControlEntry.extendedInfo` auf `EffectiveAllow` und `EffectiveDeny`,
-- ACL-Ausgabeformat/ACE-Zuordnung bleibt bei unbekanntem oder mehrdeutigem Zustand Fail Closed,
-- StrictMode-sichere Prüfung von optionalem `InputDescriptor.validation.isRequired`; nur explizit `true` bleibt Pflichtfeld/Fail-Closed-Kriterium,
-- `ServiceEndpoint.data` wird ausschließlich aus den real gelieferten `EndpointType.inputDescriptors` aufgebaut; `creationMode` ist kein pauschales Default-Feld mehr.
+- Core-/Customer-Bootstrap,
+- CustomerConfiguration-Sync,
+- Branding inkl. Hash-Marker,
+- Self-Hosting-Initializer,
+- lokales Customer-Onboarding-Frontend,
+- produktive Customer-Onboarding-YAML,
+- WIF-Metadatenauflösung,
+- Entitlement-Retry für bestätigten `VS403283`,
+- ACL-Normalisierung / CreateProjects-Grant,
+- `System.AccessToken`-Kompatibilitätsweg in Common/Branding/CustomerConfiguration,
+- temporäre System.AccessToken-E2E-Testpipeline,
+- temporärer Testpipeline-Registrierungshelfer.
 
 ### Bereits runtime-verifiziert
 
-Die realen lokalen Self-Hosting-Läufe haben folgende Punkte bestätigt:
-
-- Azure CLI gefunden,
-- Azure-DevOps-CLI-Erweiterung verfügbar,
-- Organisationsprofil / Ziel-Tenant korrekt erkannt,
-- lokale Azure-Anmeldung im erwarteten Plattform-Tenant,
-- Azure-DevOps-Zugriff erfolgreich verifiziert,
-- Core-Bootstrap-Verarbeitung nach der Splatting-Korrektur funktioniert,
-- `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` vorhanden,
-- erwartete Core-Repositories vorhanden,
-- Project-Avatar-PUT für alle vier Core-Projekte erfolgreich ausgeführt,
-- reale Azure-DevOps-Antwort auf Avatar-PUT: HTTP 204,
-- Project-Property-Marker für alle vier Core-Projekte erfolgreich geschrieben und per GET exakt verifiziert,
-- Folge-Apply erkennt alle vier Branding-Zustände als `EXISTS`,
-- lokaler PlatformBootstrap-Working-Tree sauber,
-- Azure `00-Platform/PlatformBootstrap` `main` stimmt mit lokalem committed HEAD überein,
-- `sp-bsse-platform-bootstrap-azdo` real als passwordless Entra App/Service Principal erstellt,
-- unmittelbar anschließender erster Entitlementversuch lieferte `VS403283`,
-- unveränderter späterer Apply konnte das Azure-DevOps-Service-Principal-Entitlement erfolgreich erstellen,
-- `Basic + 00-Platform/Readers` anschließend real aus Azure DevOps gelesen und als `EXISTS` verifiziert,
-- korrigierte Collection-ACL-Normalisierung gegen die reale `BSSE-CloudOps`-Ausgabe erfolgreich durchlaufen,
-- `Create new projects = Allow` real gesetzt,
-- `Create new projects = Allow` unmittelbar nach dem Write erfolgreich wieder gelesen/verifiziert,
-- ein späterer Apply erkennt `Create new projects = Allow` idempotent als `EXISTS`,
-- Azure-DevOps-Service-Endpoint-Typ für `Azure DevOps` + `WorkloadIdentityFederation` real eindeutig erkannt,
-- der Apply hat die tatsächliche Service-Endpoint-Konfigurationsfunktion erreicht,
-- nach der StrictMode-Korrektur wurde der reale `az devops service-endpoint create`-Aufruf erreicht,
-- Azure DevOps bestätigte dabei explizit, dass das pauschal gesetzte `creationMode` im realen Endpoint-Typ nicht als Input definiert ist.
-
-### Für v1.9 noch offen
-
-- `tests/Test-BSSEProjectBranding.ps1` gegen die versionierten Git-Dateien ausführen,
-- tatsächliche visuelle Anzeige der Core-Projekt-Icons in der Azure-DevOps-UI bestätigen,
-- den neuen begrenzten `VS403283`-Retry bei einem zukünftigen frischen Bootstrap als Erstlaufpfad runtime-verifizieren; der zugrunde liegende transiente Zustand selbst ist bereits bestätigt,
-- WIF-Service-Connection `sc-platform-bootstrap-azdo` nach der descriptor-basierten `data`-Korrektur erzeugen/verifizieren,
-- federated credential und pipeline-spezifische Service-Connection-Autorisierung erzeugen/verifizieren,
-- abschließenden Dependency-Dry-Run ohne `PLAN`/`BLOCKED` durchführen,
-- WIF-Pipeline-Authentifizierung mit `Customer-Onboarding` real ausführen,
-- erst danach v1.9 als vollständig verifiziert markieren.
-
-### Noch nicht runtime-verifiziert
-
-Bis zum weiteren echten Erstinitialisierungs-/Runtime-Test sind insbesondere nicht absolut bestätigt:
-
-- erfolgreicher Service-Connection-Create nach Entfernung des pauschalen `creationMode`,
-- reale Erstellung von `sc-platform-bootstrap-azdo`,
-- die real erzeugten WIF-`issuer`-/`subject`-Werte,
-- reales federated credential,
-- pipeline-spezifische Service-Connection-Autorisierung,
-- WIF-Pipeline-Authentifizierung,
-- Git-Push nach `CustomerConfiguration`,
-- tatsächliche visuelle Anzeige der Icons in der Azure-DevOps-UI,
-- Retry-Implementierung für `VS403283` innerhalb eines einzelnen frischen Erstlaufs,
-- realer vollständiger Apply-/Post-Apply-Idempotenzlauf ohne verbleibenden `PLAN`/`BLOCKED`.
-
-## 16. Separater IaC-Techniker-/Deployment-Weg
-
-### Bereits beschlossen
-
-AVD und Vaultwarden werden als IaC-Produkte unter `20-IaC` geführt.
+- Core-Projekte/-Repositories,
+- Core-Branding + Marker + Idempotenz,
+- PlatformBootstrap Source Guard,
+- Entra App/SP-Erstellung,
+- Basic + Readers,
+- transienter VS403283-Grundfall,
+- Collection-ACL-Auswertung,
+- Create new projects Grant + Verify + EXISTS,
+- realer `workloadidentityuser`-Endpoint-Typ,
+- Draft-Persistenz nach Create-Fehler,
+- realer Issuer/Subject,
+- passendes Probe-FIC,
+- UI-Finish-Setup-Request,
+- Diagnose-Cleanup eines Probe-Drafts mit HTTP 204.
 
 ### Noch offen
 
-Der zentrale Technikerweg für IaC-Deployments ist separat zu implementieren und darf nicht in `customer-onboarding.yml` integriert werden.
+- Branding-Regressionstest lokal ausführen,
+- Core-Icons visuell in Azure DevOps bestätigen,
+- `VS403283`-Retry in einem frischen Same-Process-Erstlauf runtime-verifizieren,
+- **BLOCKED:** produktive `sc-platform-bootstrap-azdo` fertigstellen,
+- produktives `fic-sc-platform-bootstrap-azdo`,
+- produktive pipeline-spezifische Service-Connection-Autorisierung,
+- produktiver Dependency-Verify ohne WIF-PLAN/BLOCKED,
+- produktiver WIF-Customer-Onboarding-E2E,
+- temporären System.AccessToken-E2E-Lauf ausführen und Build-Service-Rechte bestimmen,
+- Git-Push nach `CustomerConfiguration` aus echtem Pipeline-Lauf bestätigen,
+- erst danach v1.9 als vollständig verifiziert markieren.
 
-Zielkette:
+## 16. Aktueller nächster Umsetzungsschritt
 
-```text
-20-IaC Produkt
-    ↓
-Validate
-    ↓
-Lint / Security
-    ↓
-Plan / What-If
-    ↓
-Approval
-    ↓
-Deploy
-    ↓
-Verify
-```
-
-Die konkreten produkt-/kundenspezifischen Parameter, Environments, Approvals und Service Connections werden in den jeweiligen IaC-Umsetzungsplänen gepflegt.
+1. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` und `fic-sc-platform-bootstrap-azdo-ui-probe` bereinigen; das nur für den Test hinzugefügte App-Registration-Ownership des Administrators wieder entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
+2. GitHub-`main` in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
+3. `Customer-Onboarding-TEST-SystemAccessToken` lokal registrieren.
+4. Testpipeline mit explizitem Opt-in starten.
+5. Validate-Output der tatsächlichen Build-Service-Identität prüfen.
+6. Dry Run prüfen; vor Approval nur die minimal erforderlichen Testberechtigungen dieser konkreten Build-Service-Identität vergeben.
+7. Apply + Verify ausführen und E2E-Ergebnis dokumentieren.
+8. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung auf den Testauthentifizierungsweg.
