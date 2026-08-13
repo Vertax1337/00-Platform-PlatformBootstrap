@@ -458,7 +458,6 @@ function ConvertFrom-BSSEPermissionListOutput {
         [int64]$effectiveDeny = 0
         $resolved = $false
 
-        # Some CLI versions/formatters expose flattened Effective Allow/Deny values.
         if ($item.PSObject.Properties['effectiveAllow'] -or $item.PSObject.Properties['effectiveDeny']) {
             if ($item.PSObject.Properties['effectiveAllow']) {
                 $effectiveAllow = [int64]$item.effectiveAllow
@@ -469,8 +468,6 @@ function ConvertFrom-BSSEPermissionListOutput {
             $resolved = $true
         }
         elseif ($item.PSObject.Properties['acesDictionary']) {
-            # The documented JSON shape is an ACL with acesDictionary; effective values live
-            # under AccessControlEntry.extendedInfo. The CLI has already filtered by --subject.
             if ($null -eq $item.acesDictionary) {
                 $resolved = $true
             }
@@ -491,8 +488,6 @@ function ConvertFrom-BSSEPermissionListOutput {
                             $aceProperty = $descriptorMatches[0]
                         }
                         elseif ($aceProperties.Count -eq 1) {
-                            # --subject may have been an email/UPN while the dictionary key is the
-                            # resolved Azure DevOps identity descriptor. A single returned ACE is unambiguous.
                             $aceProperty = $aceProperties[0]
                         }
                         else {
@@ -813,13 +808,20 @@ function Resolve-BSSEEndpointInputValue {
         [Parameter(Mandatory)][string]$OrganizationName,
         [Parameter(Mandatory)][string]$Tenant,
         [Parameter(Mandatory)][string]$AppId,
-        [Parameter(Mandatory)][string]$PrincipalId
+        [Parameter(Mandatory)][string]$PrincipalId,
+        [AllowNull()][string]$SubjectDescriptor,
+        [string]$WorkloadIdentityType = 'Application'
     )
 
     switch -Regex ($Id.ToLowerInvariant()) {
         '^(tenantid|tenant)$' { return $Tenant }
         '^(serviceprincipalid|clientid|appid|applicationid)$' { return $AppId }
         '^(serviceprincipalobjectid|principalid|objectid|identityid)$' { return $PrincipalId }
+        '^(subjectdescriptor)$' {
+            if (-not [string]::IsNullOrWhiteSpace($SubjectDescriptor)) { return $SubjectDescriptor }
+            return $null
+        }
+        '^(workloadidentityfederationserviceprincipaltype)$' { return $WorkloadIdentityType }
         '^(organization|organizationname|accountname)$' { return $OrganizationName }
         '^(organizationurl|targetorganizationurl|targeturl)$' { return $OrganizationUrl.TrimEnd('/') }
         '^(creationmode)$' { return 'Manual' }
@@ -857,6 +859,7 @@ function New-BSSEServiceEndpointConfiguration {
         [Parameter(Mandatory)]$EndpointType,
         [Parameter(Mandatory)]$ProjectInfo,
         [Parameter(Mandatory)]$EntraServicePrincipal,
+        [Parameter(Mandatory)]$GraphPrincipal,
         [Parameter(Mandatory)][string]$OrganizationName,
         [Parameter(Mandatory)][string]$Tenant
     )
@@ -867,6 +870,10 @@ function New-BSSEServiceEndpointConfiguration {
 
     if (-not $scheme) {
         throw "WIF-Authentifizierungsschema fehlt im Azure-DevOps-Endpoint-Type."
+    }
+
+    if (-not $GraphPrincipal -or [string]::IsNullOrWhiteSpace([string]$GraphPrincipal.descriptor)) {
+        throw "Azure-DevOps-Graph-Identität für $IdentityName fehlt. Service Connection wird nicht ohne eindeutigen subjectDescriptor erstellt."
     }
 
     $data = @{}
@@ -881,7 +888,9 @@ function New-BSSEServiceEndpointConfiguration {
             -OrganizationName $OrganizationName `
             -Tenant $Tenant `
             -AppId $EntraServicePrincipal.appId `
-            -PrincipalId $EntraServicePrincipal.id
+            -PrincipalId $EntraServicePrincipal.id `
+            -SubjectDescriptor $GraphPrincipal.descriptor `
+            -WorkloadIdentityType 'Application'
 
         if ($null -ne $value) {
             $data[$descriptor.id] = $value
@@ -900,7 +909,9 @@ function New-BSSEServiceEndpointConfiguration {
             -OrganizationName $OrganizationName `
             -Tenant $Tenant `
             -AppId $EntraServicePrincipal.appId `
-            -PrincipalId $EntraServicePrincipal.id
+            -PrincipalId $EntraServicePrincipal.id `
+            -SubjectDescriptor $GraphPrincipal.descriptor `
+            -WorkloadIdentityType 'Application'
 
         if ($null -ne $value) {
             $authParameters[$descriptor.id] = $value
@@ -980,6 +991,7 @@ function Ensure-BSSEServiceConnection {
     param(
         [Parameter(Mandatory)]$ProjectInfo,
         [Parameter(Mandatory)]$EntraServicePrincipal,
+        $GraphPrincipal,
         [Parameter(Mandatory)][string]$OrganizationName,
         [Parameter(Mandatory)][string]$Tenant
     )
@@ -1013,6 +1025,7 @@ function Ensure-BSSEServiceConnection {
         -EndpointType $endpointType `
         -ProjectInfo $ProjectInfo `
         -EntraServicePrincipal $EntraServicePrincipal `
+        -GraphPrincipal $GraphPrincipal `
         -OrganizationName $OrganizationName `
         -Tenant $Tenant
 
@@ -1334,6 +1347,7 @@ if (-not $entraSp.id) {
 $serviceConnection = Ensure-BSSEServiceConnection `
     -ProjectInfo $projectInfo `
     -EntraServicePrincipal $entraSp `
+    -GraphPrincipal $graphSp `
     -OrganizationName $organizationName `
     -Tenant $TenantId
 
