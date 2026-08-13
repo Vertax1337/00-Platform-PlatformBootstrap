@@ -83,39 +83,39 @@ function Read-BSSEYesNo {
     }
 }
 
-function Get-BSSEOnboardingArguments {
+function Get-BSSEOnboardingParameters {
     param(
         [Parameter(Mandatory)][hashtable]$Parameters,
         [switch]$Apply
     )
 
-    $arguments = @(
-        '-OrganizationUrl', $Parameters.OrganizationUrl,
-        '-CustomerNumber', $Parameters.CustomerNumber,
-        '-CustomerName', $Parameters.CustomerName
-    )
+    $scriptParameters = @{
+        OrganizationUrl = $Parameters.OrganizationUrl
+        CustomerNumber  = $Parameters.CustomerNumber
+        CustomerName    = $Parameters.CustomerName
+    }
 
     if (-not [string]::IsNullOrWhiteSpace($Parameters.CustomerSlug)) {
-        $arguments += @('-CustomerSlug', $Parameters.CustomerSlug)
+        $scriptParameters.CustomerSlug = $Parameters.CustomerSlug
     }
 
     if (-not [string]::IsNullOrWhiteSpace($Parameters.TenantId)) {
-        $arguments += @('-TenantId', $Parameters.TenantId)
+        $scriptParameters.TenantId = $Parameters.TenantId
     }
 
     if ($Parameters.Modules.Count -gt 0) {
-        $arguments += @('-Modules', ($Parameters.Modules -join ','))
+        $scriptParameters.Modules = @($Parameters.Modules)
     }
 
     if (-not [string]::IsNullOrWhiteSpace($Parameters.Firewalls)) {
-        $arguments += @('-Firewalls', $Parameters.Firewalls)
+        $scriptParameters.Firewalls = $Parameters.Firewalls
     }
 
     if ($Apply) {
-        $arguments += '-Apply'
+        $scriptParameters.Apply = $true
     }
 
-    return @($arguments)
+    return $scriptParameters
 }
 
 function Invoke-BSSECustomerOnboardingBackend {
@@ -124,8 +124,8 @@ function Invoke-BSSECustomerOnboardingBackend {
         [switch]$Apply
     )
 
-    $arguments = Get-BSSEOnboardingArguments -Parameters $Parameters -Apply:$Apply
-    return @(& "$PSScriptRoot\New-BSSECustomerProject.ps1" @arguments *>&1)
+    $scriptParameters = Get-BSSEOnboardingParameters -Parameters $Parameters -Apply:$Apply
+    return @(& "$PSScriptRoot\New-BSSECustomerProject.ps1" @scriptParameters *>&1)
 }
 
 function Invoke-BSSECustomerConfigurationSync {
@@ -134,16 +134,21 @@ function Invoke-BSSECustomerConfigurationSync {
         [switch]$Apply
     )
 
-    $arguments = Get-BSSEOnboardingArguments -Parameters $Parameters -Apply:$Apply
-    return @(& "$PSScriptRoot\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1)
+    $scriptParameters = Get-BSSEOnboardingParameters -Parameters $Parameters -Apply:$Apply
+    return @(& "$PSScriptRoot\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1)
 }
 
 function Invoke-BSSEPlatformDependencies {
     param([switch]$Apply)
 
-    $arguments = @('-OrganizationUrl', $OrganizationUrl)
-    if ($Apply) { $arguments += '-Apply' }
-    return @(& "$PSScriptRoot\Initialize-BSSEPlatformDependencies.ps1" @arguments *>&1)
+    $scriptParameters = @{
+        OrganizationUrl = $OrganizationUrl
+    }
+    if ($Apply) {
+        $scriptParameters.Apply = $true
+    }
+
+    return @(& "$PSScriptRoot\Initialize-BSSEPlatformDependencies.ps1" @scriptParameters *>&1)
 }
 
 Write-Host ''
