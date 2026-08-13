@@ -154,6 +154,14 @@ acesDictionary
 
 Der Bootstrap normalisiert dieses dokumentierte Format auf einen internen Berechtigungszustand und unterstützt zusätzlich bereits flach ausgegebene CLI-Werte. Mehrdeutige ACE-Zuordnungen oder unbekannte Ausgabeformate führen zu **Fail Closed**. Ein vorhandenes effektives `Deny` wird nicht automatisch überschrieben.
 
+Der korrigierte reale Dry Run am 13.08.2026 hat diese ACL-Normalisierung in `BSSE-CloudOps` erfolgreich durchlaufen, den Collection-/`CREATE_PROJECTS`-Pfad sicher aufgelöst und folgenden noch fehlenden Sollzustand ausgegeben:
+
+```text
+[PLAN] Grant collection permission: Create new projects = Allow
+```
+
+Damit ist die **lesende ACL-Ermittlung und Planung** runtime-verifiziert. Die mutierende Vergabe und deren Post-Write-Verifikation sind weiterhin offen.
+
 ### 6. Azure-DevOps-WIF-Service-Connection
 
 Zielname:
@@ -171,6 +179,15 @@ Microsoft Entra Workload Identity Federation
 Der Bootstrap verwendet für diesen neuen Azure-DevOps-Service-Connection-Typ **kein hartcodiertes undokumentiertes Schema**. Er fragt die in der Organisation verfügbaren Service-Endpoint-Type-Metadaten ab und akzeptiert nur einen eindeutigen `Azure DevOps`-Typ mit `WorkloadIdentityFederation`.
 
 Unbekannte erforderliche Endpoint-Inputs führen zu Fail Closed.
+
+Der korrigierte reale Dry Run am 13.08.2026 konnte die von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten ohne `BLOCKED`/Exception auswerten und eindeutig folgenden Plan erzeugen:
+
+```text
+[PLAN] Create Azure DevOps WIF Service Connection sc-platform-bootstrap-azdo
+[PLAN] Create federated credential after Service Connection yields issuer/subject
+```
+
+Damit ist die **Runtime-Erkennung des passenden WIF-Service-Endpoint-Typs und die Planbarkeit der Service Connection** bestätigt. Die reale Erstellung der Service Connection und die daraus gelieferten konkreten `issuer`-/`subject`-Werte sind noch nicht verifiziert.
 
 ### 7. Federated Credential
 
@@ -271,7 +288,7 @@ Diese bleiben IaC-Produkte unter `20-IaC` mit eigenen Deployment-Identitäten un
 
 ### Bereits real bestätigt
 
-Die bisherigen Erstinitialisierungs-/Apply-Läufe in `BSSE-CloudOps` haben folgende Punkte bestätigt:
+Die bisherigen Erstinitialisierungs-/Apply-/Dry-Run-Läufe in `BSSE-CloudOps` haben folgende Punkte bestätigt:
 
 - Azure CLI und Azure-DevOps-CLI-Erweiterung funktionieren im lokalen Bootstrap-Kontext,
 - Organisationsprofil, Ziel-Tenant und Azure-DevOps-Zugriff werden korrekt erkannt,
@@ -282,13 +299,14 @@ Die bisherigen Erstinitialisierungs-/Apply-Läufe in `BSSE-CloudOps` haben folge
 - `sp-bsse-platform-bootstrap-azdo` wurde real als passwordless Entra App/Service Principal erzeugt,
 - der erste unmittelbare Azure-DevOps-Entitlement-Versuch lieferte `VS403283`,
 - ein späterer unveränderter Wiederholungslauf konnte das Entitlement real erzeugen,
-- `Basic + 00-Platform/Readers` wurde anschließend aus Azure DevOps gelesen und als `EXISTS` bestätigt.
+- `Basic + 00-Platform/Readers` wurde anschließend aus Azure DevOps gelesen und als `EXISTS` bestätigt,
+- die korrigierte Collection-ACL-Normalisierung wurde gegen die reale `BSSE-CloudOps`-Ausgabe erfolgreich ausgeführt,
+- der fehlende Zustand `Create new projects = Allow` wird korrekt als `PLAN` erkannt,
+- die realen Azure-DevOps-Service-Endpoint-Type-Metadaten konnten für `Azure DevOps` + `WorkloadIdentityFederation` eindeutig ausgewertet werden,
+- `sc-platform-bootstrap-azdo`, nachgelagertes FIC und die Pipeline-Autorisierung werden im vollständigen Dependency-Dry-Run ohne `BLOCKED`/Exception korrekt geplant,
+- der vollständige aktuelle Dependency-Dry-Run endet erfolgreich mit `[OK] Platform dependency dry run / verification completed.`.
 
-### Code-seitig korrigiert, Runtime-Retest noch offen
-
-Beim anschließenden Collection-ACL-Schritt zeigte der reale Lauf, dass die bisherige Implementierung `effectiveAllow` fälschlich direkt am ACL-Tokenobjekt erwartete. Die dokumentierte/real gelieferte JSON-Struktur verwendet `acesDictionary` und `AccessControlEntry.extendedInfo`.
-
-Korrigiert ist nun:
+### Code-seitig korrigiert / implementiert
 
 ```text
 az devops security permission list
@@ -303,16 +321,17 @@ extendedInfo.effectiveAllow / effectiveDeny
 normalisierter interner Permission-State
 ```
 
-Zusätzlich wurde für den real beobachteten transienten `VS403283`-Materialisierungsfall ein begrenzter Retry ergänzt. Beide Änderungen müssen im nächsten Lauf noch real bestätigt werden.
+Zusätzlich ist für den real beobachteten transienten `VS403283`-Materialisierungsfall ein begrenzter Retry implementiert. Die Retry-Implementierung selbst kann erst bei einem zukünftigen frischen Erstlauf innerhalb desselben Prozesses vollständig runtime-verifiziert werden.
 
 ### Noch nicht runtime-verifiziert
 
 - tatsächliche `Create new projects = Allow`-ACL-Zuweisung und Post-Write-Verifikation,
-- die tatsächlich von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten für die Azure-DevOps-WIF-Service-Connection,
 - reale Erstellung von `sc-platform-bootstrap-azdo`,
+- die nach Erstellung real gelieferten WIF-`issuer`-/`subject`-Werte,
 - reales federated credential `fic-sc-platform-bootstrap-azdo`,
 - Pipeline-spezifische Service-Connection-Autorisierung,
 - anschließender WIF-Pipeline-Run,
-- vollständiger abschließender Dependency-Dry-Run ohne `PLAN`/`BLOCKED`.
+- vollständiger abschließender Dependency-Dry-Run ohne `PLAN`/`BLOCKED` nach dem Apply,
+- Retry-Implementierung für `VS403283` innerhalb eines einzelnen frischen Erstlaufs.
 
 Diese Punkte dürfen erst nach den vorgesehenen weiteren Runtime-Tests als tatsächlich bestätigt gelten.
