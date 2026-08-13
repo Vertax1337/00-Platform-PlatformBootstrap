@@ -141,7 +141,7 @@ Projektrolle:             Readers
 Collection Permission:    Create new projects = Allow
 ```
 
-Der reale BSSE-Erstinitialisierungslauf hat `Create new projects = Allow` inzwischen erfolgreich vergeben und unmittelbar danach wieder verifiziert. Unbekannte oder mehrdeutige ACL-Zustände führen weiterhin bewusst zu `BLOCKED` statt zu geratenen Berechtigungsänderungen.
+Der reale BSSE-Erstinitialisierungslauf hat `Create new projects = Allow` erfolgreich vergeben, unmittelbar danach wieder verifiziert und in einem späteren Apply idempotent als `EXISTS` wiedererkannt. Unbekannte oder mehrdeutige ACL-Zustände führen weiterhin bewusst zu `BLOCKED` statt zu geratenen Berechtigungsänderungen.
 
 ## 3. Vor dem Lauf: lokalen Source of Truth prüfen
 
@@ -447,13 +447,15 @@ Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konventi
 - passwordless Entra App/Service Principal `sp-bsse-platform-bootstrap-azdo` erstellt,
 - Azure-DevOps-Entitlement `Basic + 00-Platform/Readers` erstellt und anschließend als `EXISTS` verifiziert,
 - Collection-ACL-Struktur erfolgreich ausgewertet,
-- `Create new projects = Allow` real vergeben und unmittelbar danach verifiziert,
-- passender Azure-DevOps-Service-Endpoint-Typ mit `WorkloadIdentityFederation` real eindeutig erkannt.
+- `Create new projects = Allow` real vergeben, unmittelbar danach verifiziert und später idempotent als `EXISTS` erkannt,
+- passender Azure-DevOps-Service-Endpoint-Typ mit `WorkloadIdentityFederation` real eindeutig erkannt,
+- realer Service-Connection-Create-Aufruf erreicht,
+- Azure DevOps hat bestätigt, dass `creationMode` im aktuellen Endpoint-Typ kein erlaubtes Input ist.
 
 ### Noch offen / laufende Runtime-Verifikation
 
-- korrigierte Verarbeitung optionaler `InputDescriptor.validation.isRequired`-Metadaten im realen Apply bestätigen,
-- `sc-platform-bootstrap-azdo` erstellen/verifizieren,
+- erfolgreicher Create von `sc-platform-bootstrap-azdo` nach der descriptor-basierten Entfernung des pauschalen `creationMode`,
+- `sc-platform-bootstrap-azdo` anschließend lesen/verifizieren,
 - `fic-sc-platform-bootstrap-azdo` erstellen/verifizieren,
 - pipeline-spezifische Service-Connection-Autorisierung erstellen/verifizieren,
 - abschließenden Dependency-Dry-Run ohne `PLAN`/`BLOCKED`,
