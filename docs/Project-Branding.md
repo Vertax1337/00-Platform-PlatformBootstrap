@@ -1,12 +1,12 @@
 # Project Branding – Azure DevOps Project Avatars
 
-> **Status:** v1.9 Candidate auf `agent/project-branding`. Code, Mapping und Dokumentation sind vorbereitet; die fünf freigegebenen Original-PNGs müssen vor dem Merge noch tatsächlich unter `assets/project-icons/` in Git versioniert werden. `main` bleibt bis dahin v1.8 Source-of-Truth.
+> **Status:** v1.9 Candidate auf `main`. Code, Mapping und die fünf freigegebenen Original-PNGs sind versioniert. Der erste reale Apply hat den Avatar-PUT für `00-Platform` erreicht und von Azure DevOps HTTP 204 erhalten. Die Implementierung akzeptiert deshalb nun HTTP 200 oder 204 als erfolgreichen Avatar-PUT; Marker-Write/Readback und vollständige Runtime-Verifikation bleiben noch offen.
 
 ## Zweck
 
 `PlatformBootstrap` verwaltet die Azure-DevOps-Projekt-Avatare als Teil des gewünschten Plattformzustands.
 
-Vorgesehene versionierte Branding-Assets:
+Versionierte Branding-Assets:
 
 ```text
 assets/
@@ -82,6 +82,8 @@ Referenz:
 https://learn.microsoft.com/rest/api/azure/devops/core/avatar/set-project-avatar?view=azure-devops-rest-7.1
 ```
 
+Microsoft dokumentiert für `Set Project Avatar` aktuell HTTP 200 als Erfolg. Der erste reale BSSE-CloudOps-Apply am 13.08.2026 lieferte für den Avatar-PUT von `00-Platform` jedoch HTTP 204. Da beide Statuscodes erfolgreiche 2xx-Antworten darstellen und der gewünschte Zustand anschließend zusätzlich über den verwalteten Marker verifiziert wird, akzeptiert PlatformBootstrap für diesen Endpoint explizit HTTP 200 und HTTP 204.
+
 Die bestehende Bootstrap-Authentifizierung wird weiterverwendet:
 
 - lokal: Azure-CLI-/Entra-Kontext,
@@ -122,7 +124,7 @@ Hash identisch?
       Dry Run → PLAN
       Apply   → Avatar PUT
                  ↓
-               HTTP 200 erforderlich
+               HTTP 200 oder 204 erforderlich
                  ↓
                SHA-256-Property schreiben
                  ↓
@@ -168,7 +170,7 @@ Project-ID ermittelt?
     ↓
 Marker lesbar?
     ↓
-Avatar API HTTP 200?
+Avatar API HTTP 200/204?
     ↓
 Marker schreibbar?
     ↓
@@ -195,7 +197,7 @@ Projekt oder Project-ID nach Apply nicht ermittelbar
 REST-/Berechtigungsfehler
 → BLOCKED / Fehler
 
-Avatar PUT nicht mit HTTP 200 bestätigt
+Avatar PUT nicht mit HTTP 200 oder 204 bestätigt
 → BLOCKED / Fehler
 
 Hash-Marker nicht schreib-/les-/verifizierbar
@@ -223,16 +225,19 @@ Für neu durch PlatformBootstrap erzeugte `CUST-*`-Projekte wird die bereits bes
 
 Die angehängte ZIP wurde vor der Implementierung geprüft. Sie enthält exakt fünf PNGs unter `assets/project-icons/`; alle fünf sind valide PNGs mit 1254×1254 Pixeln im RGB-Modus.
 
-Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften Originalgrößen und SHA-256-Werte. Dadurch wird die Candidate-Implementierung erst merge-fertig, wenn genau diese freigegebenen Source Assets im Git-Tree vorhanden sind.
+Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften Originalgrößen und SHA-256-Werte. Die fünf freigegebenen Source Assets sind inzwischen in `main` versioniert und bytegenau gegen die zuvor geprüften Originale abgeglichen.
 
 ## Verifikationsstatus
 
-### Verifiziert
+### Bereits verifiziert
 
 - ZIP-Inhalt und Pfade,
-- PNG-Gültigkeit, Dimension und Farbmodus der fünf hochgeladenen Source Assets,
+- PNG-Gültigkeit, Dimension und Farbmodus der fünf Source Assets,
 - Bytegrößen und SHA-256 der fünf Source Assets,
-- Code-Diff der Core-/Customer-Provisionierungsintegration auf dem Branding-Branch.
+- Assets im `main`-Git-Tree bytegenau gegen die geprüften Originale abgeglichen,
+- Core-/Customer-Provisionierungsintegration code-seitig in `main`,
+- realer Avatar-PUT für `00-Platform` wurde am 13.08.2026 erreicht,
+- reale Azure-DevOps-Antwort auf diesen PUT: HTTP 204.
 
 ### Code-seitig implementiert
 
@@ -242,18 +247,23 @@ Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften 
 - Core-Projektintegration,
 - Customer-Projektintegration,
 - Dry-Run-/Apply-/Fail-Closed-Verhalten,
-- Regressionstest mit den freigegebenen Asset-Hashes.
+- Regressionstest mit den freigegebenen Asset-Hashes,
+- Avatar-PUT akzeptiert dokumentiertes HTTP 200 sowie den real beobachteten HTTP-204-Erfolg.
 
-### Vor Merge noch offen
+### Noch offen
 
-- die fünf Original-PNGs im Git-Tree des Branding-Branches versionieren,
-- den PowerShell-Regressionstest gegen diese Git-Dateien ausführen.
+- `tests/Test-BSSEProjectBranding.ps1` lokal ausführen,
+- korrigierten Apply erneut ausführen,
+- Project-Property-Marker für `00-Platform` schreiben und per GET exakt verifizieren,
+- Branding für `10-Automation`, `20-IaC` und `99-LAB` durchlaufen,
+- tatsächliche Anzeige der Icons in der Azure-DevOps-UI bestätigen,
+- anschließend idempotenten Dry Run ohne verbleibenden Branding-PLAN verifizieren.
 
 ### Noch nicht runtime-verifiziert
 
-Bis zum ersten realen Azure-DevOps-Lauf dürfen folgende Punkte nicht als bestätigt gelten:
+Bis zum nächsten realen Azure-DevOps-Lauf dürfen folgende Punkte nicht als bestätigt gelten:
 
-- tatsächlicher Avatar-PUT in `BSSE-CloudOps`,
-- tatsächliche Berechtigung der lokalen bzw. WIF-Pipeline-Identität für Project Avatar + Project Properties,
-- tatsächlicher Project-Property-Write/Readback in der Zielorganisation,
-- tatsächliche Anzeige der Icons in der Azure-DevOps-UI.
+- erfolgreicher Marker-PATCH/GET-Readback in `BSSE-CloudOps`,
+- vollständiger Branding-Apply für alle Core-Projekte,
+- WIF-Pipeline-Identität für Project Avatar + Project Properties,
+- tatsächliche Anzeige aller Icons in der Azure-DevOps-UI.
