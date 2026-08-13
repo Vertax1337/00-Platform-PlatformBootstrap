@@ -141,7 +141,7 @@ Projektrolle:             Readers
 Collection Permission:    Create new projects = Allow
 ```
 
-Der konkrete `Create new projects`-ACL-Schritt wird im laufenden BSSE-Ersttest weiterhin real verifiziert. Unbekannte oder mehrdeutige ACL-Zustände führen bewusst zu `BLOCKED` statt zu geratenen Berechtigungsänderungen.
+Der reale BSSE-Erstinitialisierungslauf hat `Create new projects = Allow` inzwischen erfolgreich vergeben und unmittelbar danach wieder verifiziert. Unbekannte oder mehrdeutige ACL-Zustände führen weiterhin bewusst zu `BLOCKED` statt zu geratenen Berechtigungsänderungen.
 
 ## 3. Vor dem Lauf: lokalen Source of Truth prüfen
 
@@ -445,12 +445,14 @@ Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konventi
 - Project Branding inkl. SHA-256-Marker für alle vier Core-Projekte,
 - idempotenter Folge-Apply des Project Brandings,
 - passwordless Entra App/Service Principal `sp-bsse-platform-bootstrap-azdo` erstellt,
-- Azure-DevOps-Entitlement `Basic + 00-Platform/Readers` erstellt und anschließend als `EXISTS` verifiziert.
+- Azure-DevOps-Entitlement `Basic + 00-Platform/Readers` erstellt und anschließend als `EXISTS` verifiziert,
+- Collection-ACL-Struktur erfolgreich ausgewertet,
+- `Create new projects = Allow` real vergeben und unmittelbar danach verifiziert,
+- passender Azure-DevOps-Service-Endpoint-Typ mit `WorkloadIdentityFederation` real eindeutig erkannt.
 
 ### Noch offen / laufende Runtime-Verifikation
 
-- `Create new projects = Allow` real zuweisen und verifizieren,
-- reale WIF-Service-Endpoint-Type-Metadaten auswerten,
+- korrigierte Verarbeitung optionaler `InputDescriptor.validation.isRequired`-Metadaten im realen Apply bestätigen,
 - `sc-platform-bootstrap-azdo` erstellen/verifizieren,
 - `fic-sc-platform-bootstrap-azdo` erstellen/verifizieren,
 - pipeline-spezifische Service-Connection-Autorisierung erstellen/verifizieren,
