@@ -84,10 +84,10 @@ stages:
 
           if ('${{ parameters.confirmTemporaryAzureRmWifBridge }}' -ne 'True') {
             throw @'
-This is the temporary AzureRM-WIF bridge E2E test pipeline.
-Set confirmTemporaryAzureRmWifBridge=true explicitly to run it.
-The productive authentication target remains sc-platform-bootstrap-azdo via Azure DevOps (Preview) WIF.
-'@
+          This is the temporary AzureRM-WIF bridge E2E test pipeline.
+          Set confirmTemporaryAzureRmWifBridge=true explicitly to run it.
+          The productive authentication target remains sc-platform-bootstrap-azdo via Azure DevOps (Preview) WIF.
+          '@
           }
 
           if ([string]::IsNullOrWhiteSpace('${{ parameters.customerNumber }}')) {
