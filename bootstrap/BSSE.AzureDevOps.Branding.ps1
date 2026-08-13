@@ -236,13 +236,23 @@ function Set-BSSEProjectAvatarHashMarker {
     )
 
     $url = "$($OrganizationUrl.TrimEnd('/'))/_apis/projects/$ProjectId/properties?api-version=7.1-preview.1"
-    $body = @(
-        @{
+
+    # Azure DevOps expects a JsonPatchDocument, i.e. a JSON array even when there is
+    # only one patch operation. Passing a one-element PowerShell array through the
+    # pipeline enumerates it before ConvertTo-Json and would serialize only the object.
+    # Use -InputObject so the array itself is serialized as [ { ... } ].
+    $patchDocument = @(
+        [ordered]@{
             op    = 'add'
             path  = "/$($script:BSSEProjectAvatarHashProperty)"
             value = $Sha256
         }
-    ) | ConvertTo-Json -Depth 5 -Compress
+    )
+    $body = ConvertTo-Json -InputObject $patchDocument -Depth 5 -Compress
+
+    if (-not $body.TrimStart().StartsWith('[')) {
+        throw 'Project-Branding JSON-Patch konnte nicht als Array serialisiert werden.'
+    }
 
     $response = Invoke-BSSEProjectBrandingRest `
         -Method PATCH `
