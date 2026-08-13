@@ -118,6 +118,14 @@ Group:        Readers
 
 Damit erhält sie nicht pauschal administrative Rechte im Plattformprojekt.
 
+Beim ersten realen Lauf am 13.08.2026 wurde unmittelbar nach der Entra-Erstellung einmalig folgendes Azure-DevOps-Ergebnis beobachtet:
+
+```text
+VS403283: Could not add user '<service-principal-object-id>' at this time.
+```
+
+Ein unveränderter Wiederholungslauf nach kurzer Wartezeit konnte dasselbe Service-Principal-Entitlement erfolgreich anlegen und anschließend als `Basic + 00-Platform/Readers` verifizieren. Für genau diesen real bestätigten Entra→Azure-DevOps-Materialisierungsfall verwendet der Bootstrap deshalb einen **begrenzten Retry**. Andere Entitlement-Fehler werden nicht verschluckt oder pauschal wiederholt.
+
 ### 5. Minimale Collection-Berechtigung
 
 Die Identität wird ausdrücklich **nicht** Mitglied von:
@@ -134,7 +142,17 @@ Create new projects = Allow
 
 Der Bootstrap ermittelt Security Namespace und Permission Bit zur Laufzeit. Auch der zu verwendende Collection-ACL-Token wird nicht geraten, sondern aus den effektiven Rechten des angemeldeten Erstinstallations-Administrators abgeleitet.
 
-Ein vorhandenes `Deny` wird nicht automatisch überschrieben.
+Die Azure-DevOps-CLI liefert `az devops security permission list --output json` als ACL-Struktur mit `acesDictionary`. Die effektiven Werte liegen im zugehörigen Access Control Entry unter:
+
+```text
+acesDictionary
+└── <identity-descriptor>
+    └── extendedInfo
+        ├── effectiveAllow
+        └── effectiveDeny
+```
+
+Der Bootstrap normalisiert dieses dokumentierte Format auf einen internen Berechtigungszustand und unterstützt zusätzlich bereits flach ausgegebene CLI-Werte. Mehrdeutige ACE-Zuordnungen oder unbekannte Ausgabeformate führen zu **Fail Closed**. Ein vorhandenes effektives `Deny` wird nicht automatisch überschrieben.
 
 ### 6. Azure-DevOps-WIF-Service-Connection
 
@@ -251,15 +269,50 @@ Diese bleiben IaC-Produkte unter `20-IaC` mit eigenen Deployment-Identitäten un
 
 ## Runtime-Verifikationsstatus
 
-Die Self-Hosting-Logik ist im Repository implementiert. **Noch nicht durch einen echten Erstinstallationslauf verifiziert** sind insbesondere:
+### Bereits real bestätigt
 
-- die tatsächlich von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten für die neue Azure-DevOps-WIF-Service-Connection,
-- das reale Erstellen von `sp-bsse-platform-bootstrap-azdo`,
-- das reale Service-Principal-Entitlement in Azure DevOps,
-- die tatsächliche `Create new projects`-ACL-Zuweisung,
-- die reale Erstellung von `sc-platform-bootstrap-azdo`,
-- das reale federated credential,
-- die Pipeline-spezifische Service-Connection-Autorisierung,
-- der anschließende WIF-Pipeline-Run.
+Die bisherigen Erstinitialisierungs-/Apply-Läufe in `BSSE-CloudOps` haben folgende Punkte bestätigt:
 
-Diese Punkte dürfen erst nach dem vorgesehenen gemeinsamen Erstinstallations-/Runtime-Test als tatsächlich bestätigt gelten.
+- Azure CLI und Azure-DevOps-CLI-Erweiterung funktionieren im lokalen Bootstrap-Kontext,
+- Organisationsprofil, Ziel-Tenant und Azure-DevOps-Zugriff werden korrekt erkannt,
+- Core-Projekte und erwartete Core-Repositories werden idempotent erkannt,
+- `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` besitzen die verwalteten Project Avatars und die SHA-256-Marker wurden erfolgreich geschrieben/gelesen,
+- ein Folge-Apply erkennt diese vier Branding-Zustände als `EXISTS`,
+- `00-Platform/PlatformBootstrap main` wird gegen den lokalen committed HEAD verifiziert,
+- `sp-bsse-platform-bootstrap-azdo` wurde real als passwordless Entra App/Service Principal erzeugt,
+- der erste unmittelbare Azure-DevOps-Entitlement-Versuch lieferte `VS403283`,
+- ein späterer unveränderter Wiederholungslauf konnte das Entitlement real erzeugen,
+- `Basic + 00-Platform/Readers` wurde anschließend aus Azure DevOps gelesen und als `EXISTS` bestätigt.
+
+### Code-seitig korrigiert, Runtime-Retest noch offen
+
+Beim anschließenden Collection-ACL-Schritt zeigte der reale Lauf, dass die bisherige Implementierung `effectiveAllow` fälschlich direkt am ACL-Tokenobjekt erwartete. Die dokumentierte/real gelieferte JSON-Struktur verwendet `acesDictionary` und `AccessControlEntry.extendedInfo`.
+
+Korrigiert ist nun:
+
+```text
+az devops security permission list
+        ↓
+ACL.token
+ACL.acesDictionary
+        ↓
+zugehörigen ACE eindeutig auflösen
+        ↓
+extendedInfo.effectiveAllow / effectiveDeny
+        ↓
+normalisierter interner Permission-State
+```
+
+Zusätzlich wurde für den real beobachteten transienten `VS403283`-Materialisierungsfall ein begrenzter Retry ergänzt. Beide Änderungen müssen im nächsten Lauf noch real bestätigt werden.
+
+### Noch nicht runtime-verifiziert
+
+- tatsächliche `Create new projects = Allow`-ACL-Zuweisung und Post-Write-Verifikation,
+- die tatsächlich von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten für die Azure-DevOps-WIF-Service-Connection,
+- reale Erstellung von `sc-platform-bootstrap-azdo`,
+- reales federated credential `fic-sc-platform-bootstrap-azdo`,
+- Pipeline-spezifische Service-Connection-Autorisierung,
+- anschließender WIF-Pipeline-Run,
+- vollständiger abschließender Dependency-Dry-Run ohne `PLAN`/`BLOCKED`.
+
+Diese Punkte dürfen erst nach den vorgesehenen weiteren Runtime-Tests als tatsächlich bestätigt gelten.
