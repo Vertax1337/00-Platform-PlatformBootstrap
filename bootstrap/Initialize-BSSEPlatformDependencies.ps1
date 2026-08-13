@@ -997,19 +997,19 @@ function Ensure-BSSEPipelineRegistrationAndAuthorization {
         return
     }
 
-    $registerArgs = @(
-        '-OrganizationUrl',$OrganizationUrl,
-        '-Project',$Project,
-        '-Repository',$Repository,
-        '-PipelineName',$PipelineName,
-        '-YamlPath',$YamlPath,
-        '-ServiceConnectionName',$ServiceConnectionName
-    )
+    $registerParams = @{
+        OrganizationUrl       = $OrganizationUrl
+        Project               = $Project
+        Repository            = $Repository
+        PipelineName          = $PipelineName
+        YamlPath              = $YamlPath
+        ServiceConnectionName = $ServiceConnectionName
+    }
     if ($Apply) {
-        $registerArgs += '-Apply'
+        $registerParams.Apply = $true
     }
 
-    & "$PSScriptRoot\Register-BSSECustomerOnboardingPipeline.ps1" @registerArgs
+    & "$PSScriptRoot\Register-BSSECustomerOnboardingPipeline.ps1" @registerParams
 
     $pipelinesResult = Invoke-BSSEAz -Arguments @(
         'pipelines','list',
@@ -1126,11 +1126,13 @@ Write-Host "[OK] Platform tenant context: $TenantId" -ForegroundColor Green
 
 Write-Host ''
 Write-Host 'Core platform topology:' -ForegroundColor Cyan
-$coreArgs = @('-OrganizationUrl',$OrganizationUrl)
-if ($Apply) {
-    $coreArgs += '-Apply'
+$coreParams = @{
+    OrganizationUrl = $OrganizationUrl
 }
-& "$PSScriptRoot\New-BSSEAzureDevOpsCore.ps1" @coreArgs
+if ($Apply) {
+    $coreParams.Apply = $true
+}
+& "$PSScriptRoot\New-BSSEAzureDevOpsCore.ps1" @coreParams
 
 $projectInfo = Get-BSSEProjectInfo -ProjectName $Project
 if (-not $projectInfo) {
