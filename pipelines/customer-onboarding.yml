@@ -105,34 +105,34 @@ stages:
           if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
           if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
 
-          $arguments = @(
-            '-OrganizationUrl', '$(System.CollectionUri)',
-            '-CustomerNumber', '${{ parameters.customerNumber }}',
-            '-CustomerName', '${{ parameters.customerName }}'
-          )
+          $scriptParameters = @{
+            OrganizationUrl = '$(System.CollectionUri)'
+            CustomerNumber  = '${{ parameters.customerNumber }}'
+            CustomerName    = '${{ parameters.customerName }}'
+          }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
-            $arguments += @('-CustomerSlug', '${{ parameters.customerSlug }}')
+            $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
           }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
-            $arguments += @('-TenantId', '${{ parameters.tenantId }}')
+            $scriptParameters.TenantId = '${{ parameters.tenantId }}'
           }
 
           if ($modules.Count -gt 0) {
-            $arguments += @('-Modules', ($modules -join ','))
+            $scriptParameters.Modules = @($modules)
           }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
-            $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
+            $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
           }
 
           Write-Host '=== DRY RUN: CUSTOMER BOUNDARY ==='
-          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments *>&1
+          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters *>&1
           $boundaryOutput | ForEach-Object { Write-Host $_ }
 
           Write-Host '=== DRY RUN: CUSTOMERCONFIGURATION ==='
-          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1
+          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1
           $configOutput | ForEach-Object { Write-Host $_ }
 
           $text = (($boundaryOutput + $configOutput) | Out-String)
@@ -195,33 +195,34 @@ stages:
           if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
           if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
 
-          $arguments = @(
-            '-OrganizationUrl', '$(System.CollectionUri)',
-            '-CustomerNumber', '${{ parameters.customerNumber }}',
-            '-CustomerName', '${{ parameters.customerName }}'
-          )
+          $scriptParameters = @{
+            OrganizationUrl = '$(System.CollectionUri)'
+            CustomerNumber  = '${{ parameters.customerNumber }}'
+            CustomerName    = '${{ parameters.customerName }}'
+            Apply           = $true
+          }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
-            $arguments += @('-CustomerSlug', '${{ parameters.customerSlug }}')
+            $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
           }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
-            $arguments += @('-TenantId', '${{ parameters.tenantId }}')
+            $scriptParameters.TenantId = '${{ parameters.tenantId }}'
           }
 
           if ($modules.Count -gt 0) {
-            $arguments += @('-Modules', ($modules -join ','))
+            $scriptParameters.Modules = @($modules)
           }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
-            $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
+            $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
           }
 
           Write-Host '=== APPLY: CUSTOMER BOUNDARY ==='
-          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments -Apply
+          & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters
 
           Write-Host '=== APPLY: CUSTOMERCONFIGURATION ==='
-          & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @arguments -Apply
+          & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters
 
 - stage: Verify
   displayName: Verify idempotency
@@ -248,34 +249,34 @@ stages:
           if ('${{ parameters.azureDocumentation }}' -eq 'True') { $modules += 'AzureDocumentation' }
           if ('${{ parameters.opnsenseDocumentation }}' -eq 'True') { $modules += 'OPNsenseDocumentation' }
 
-          $arguments = @(
-            '-OrganizationUrl', '$(System.CollectionUri)',
-            '-CustomerNumber', '${{ parameters.customerNumber }}',
-            '-CustomerName', '${{ parameters.customerName }}'
-          )
+          $scriptParameters = @{
+            OrganizationUrl = '$(System.CollectionUri)'
+            CustomerNumber  = '${{ parameters.customerNumber }}'
+            CustomerName    = '${{ parameters.customerName }}'
+          }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
-            $arguments += @('-CustomerSlug', '${{ parameters.customerSlug }}')
+            $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
           }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.tenantId }}')) {
-            $arguments += @('-TenantId', '${{ parameters.tenantId }}')
+            $scriptParameters.TenantId = '${{ parameters.tenantId }}'
           }
 
           if ($modules.Count -gt 0) {
-            $arguments += @('-Modules', ($modules -join ','))
+            $scriptParameters.Modules = @($modules)
           }
 
           if (-not [string]::IsNullOrWhiteSpace('${{ parameters.firewalls }}')) {
-            $arguments += @('-Firewalls', '${{ parameters.firewalls }}')
+            $scriptParameters.Firewalls = '${{ parameters.firewalls }}'
           }
 
           Write-Host '=== VERIFY: CUSTOMER BOUNDARY ==='
-          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @arguments *>&1
+          $boundaryOutput = & "$(Build.SourcesDirectory)\bootstrap\New-BSSECustomerProject.ps1" @scriptParameters *>&1
           $boundaryOutput | ForEach-Object { Write-Host $_ }
 
           Write-Host '=== VERIFY: CUSTOMERCONFIGURATION ==='
-          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @arguments *>&1
+          $configOutput = & "$(Build.SourcesDirectory)\bootstrap\Sync-BSSECustomerConfiguration.ps1" @scriptParameters *>&1
           $configOutput | ForEach-Object { Write-Host $_ }
 
           $text = (($boundaryOutput + $configOutput) | Out-String)
