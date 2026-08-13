@@ -154,13 +154,14 @@ acesDictionary
 
 Der Bootstrap normalisiert dieses dokumentierte Format auf einen internen Berechtigungszustand und unterstützt zusätzlich bereits flach ausgegebene CLI-Werte. Mehrdeutige ACE-Zuordnungen oder unbekannte Ausgabeformate führen zu **Fail Closed**. Ein vorhandenes effektives `Deny` wird nicht automatisch überschrieben.
 
-Der korrigierte reale Dry Run am 13.08.2026 hat diese ACL-Normalisierung in `BSSE-CloudOps` erfolgreich durchlaufen, den Collection-/`CREATE_PROJECTS`-Pfad sicher aufgelöst und folgenden noch fehlenden Sollzustand ausgegeben:
+Der reale Dry Run am 13.08.2026 hat die korrigierte ACL-Normalisierung erfolgreich durchlaufen und den fehlenden Zustand als `PLAN` erkannt. Der anschließende reale Apply hat die Collection-Berechtigung danach tatsächlich gesetzt und direkt aus Azure DevOps wieder verifiziert:
 
 ```text
-[PLAN] Grant collection permission: Create new projects = Allow
+[GRANT] Collection permission: Create new projects = Allow
+[OK] Create new projects für sp-bsse-platform-bootstrap-azdo verifiziert.
 ```
 
-Damit ist die **lesende ACL-Ermittlung und Planung** runtime-verifiziert. Die mutierende Vergabe und deren Post-Write-Verifikation sind weiterhin offen.
+Damit sind die **lesende ACL-Ermittlung, die mutierende Vergabe und die Post-Write-Verifikation von `Create new projects = Allow` runtime-verifiziert**.
 
 ### 6. Azure-DevOps-WIF-Service-Connection
 
@@ -178,16 +179,24 @@ Microsoft Entra Workload Identity Federation
 
 Der Bootstrap verwendet für diesen neuen Azure-DevOps-Service-Connection-Typ **kein hartcodiertes undokumentiertes Schema**. Er fragt die in der Organisation verfügbaren Service-Endpoint-Type-Metadaten ab und akzeptiert nur einen eindeutigen `Azure DevOps`-Typ mit `WorkloadIdentityFederation`.
 
-Unbekannte erforderliche Endpoint-Inputs führen zu Fail Closed.
+Unbekannte **explizit als erforderlich markierte** Endpoint-Inputs führen zu Fail Closed.
 
-Der korrigierte reale Dry Run am 13.08.2026 konnte die von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten ohne `BLOCKED`/Exception auswerten und eindeutig folgenden Plan erzeugen:
+Der reale Dry Run am 13.08.2026 konnte die von `BSSE-CloudOps` gelieferten Endpoint-Type-Metadaten ohne `BLOCKED`/Exception auswerten und eindeutig folgenden Plan erzeugen:
 
 ```text
 [PLAN] Create Azure DevOps WIF Service Connection sc-platform-bootstrap-azdo
 [PLAN] Create federated credential after Service Connection yields issuer/subject
 ```
 
-Damit ist die **Runtime-Erkennung des passenden WIF-Service-Endpoint-Typs und die Planbarkeit der Service Connection** bestätigt. Die reale Erstellung der Service Connection und die daraus gelieferten konkreten `issuer`-/`subject`-Werte sind noch nicht verifiziert.
+Der anschließende reale Apply erreichte erstmals `New-BSSEServiceEndpointConfiguration`, brach dort jedoch vor der Service-Connection-Erstellung an einer StrictMode-Annahme ab:
+
+```text
+The property 'isRequired' cannot be found on this object.
+```
+
+Die offizielle Azure-DevOps-REST-Struktur erlaubt `InputDescriptor.validation`, ohne dass `isRequired` zwingend enthalten sein muss; Microsoft zeigt selbst optionale Deskriptoren mit `validation.dataType`/`maxLength` ohne `isRequired`. Der Bootstrap prüft daher nun zuerst, ob `validation` und die Property `isRequired` tatsächlich vorhanden sind. Nur ein explizites `isRequired: true` wird als Pflichtfeld behandelt. Dadurch bleiben unbekannte Pflichtinputs weiterhin Fail Closed, während optionale Metadaten unter StrictMode nicht mehr fehlschlagen.
+
+Die reale Erstellung von `sc-platform-bootstrap-azdo` und die daraus gelieferten konkreten `issuer`-/`subject`-Werte bleiben bis zum nächsten Apply offen.
 
 ### 7. Federated Credential
 
@@ -301,10 +310,10 @@ Die bisherigen Erstinitialisierungs-/Apply-/Dry-Run-Läufe in `BSSE-CloudOps` ha
 - ein späterer unveränderter Wiederholungslauf konnte das Entitlement real erzeugen,
 - `Basic + 00-Platform/Readers` wurde anschließend aus Azure DevOps gelesen und als `EXISTS` bestätigt,
 - die korrigierte Collection-ACL-Normalisierung wurde gegen die reale `BSSE-CloudOps`-Ausgabe erfolgreich ausgeführt,
-- der fehlende Zustand `Create new projects = Allow` wird korrekt als `PLAN` erkannt,
+- `Create new projects = Allow` wurde real vergeben und unmittelbar danach erfolgreich verifiziert,
 - die realen Azure-DevOps-Service-Endpoint-Type-Metadaten konnten für `Azure DevOps` + `WorkloadIdentityFederation` eindeutig ausgewertet werden,
-- `sc-platform-bootstrap-azdo`, nachgelagertes FIC und die Pipeline-Autorisierung werden im vollständigen Dependency-Dry-Run ohne `BLOCKED`/Exception korrekt geplant,
-- der vollständige aktuelle Dependency-Dry-Run endet erfolgreich mit `[OK] Platform dependency dry run / verification completed.`.
+- der vollständige vorherige Dependency-Dry-Run endete erfolgreich mit `[OK] Platform dependency dry run / verification completed.`,
+- der nachfolgende Apply erreichte die tatsächliche WIF-Service-Endpoint-Konfiguration.
 
 ### Code-seitig korrigiert / implementiert
 
@@ -321,11 +330,24 @@ extendedInfo.effectiveAllow / effectiveDeny
 normalisierter interner Permission-State
 ```
 
+Für Endpoint-Type-Metadaten gilt nun zusätzlich:
+
+```text
+InputDescriptor.validation fehlt
+→ optional / kein Required-Zugriff
+
+validation vorhanden, isRequired fehlt
+→ nicht als Pflichtfeld behandeln
+
+validation.isRequired == true
+→ unbekannter Input bleibt BLOCKED / Fail Closed
+```
+
 Zusätzlich ist für den real beobachteten transienten `VS403283`-Materialisierungsfall ein begrenzter Retry implementiert. Die Retry-Implementierung selbst kann erst bei einem zukünftigen frischen Erstlauf innerhalb desselben Prozesses vollständig runtime-verifiziert werden.
 
 ### Noch nicht runtime-verifiziert
 
-- tatsächliche `Create new projects = Allow`-ACL-Zuweisung und Post-Write-Verifikation,
+- der korrigierte Umgang mit optionalen/missing `isRequired`-Metadaten im nächsten realen Apply,
 - reale Erstellung von `sc-platform-bootstrap-azdo`,
 - die nach Erstellung real gelieferten WIF-`issuer`-/`subject`-Werte,
 - reales federated credential `fic-sc-platform-bootstrap-azdo`,
