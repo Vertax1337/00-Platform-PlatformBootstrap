@@ -340,7 +340,11 @@ function Ensure-BSSEProjectAvatar {
         -Body $payload `
         -ContentType 'application/json'
 
-    if ($avatarResponse.StatusCode -ne 200) {
+    # Microsoft currently documents HTTP 200 for Set Project Avatar. The first real
+    # BSSE-CloudOps runtime on 2026-08-13 returned HTTP 204 for the successful PUT.
+    # Accept both observed/documented success statuses, then rely on the managed marker
+    # write + readback below before considering the desired state verified.
+    if ($avatarResponse.StatusCode -notin @(200,204)) {
         Write-Host "[BLOCKED] Project Avatar API returned HTTP $($avatarResponse.StatusCode) for '$ProjectName'." -ForegroundColor Red
         throw "Project Avatar API für '$ProjectName' wurde nicht erfolgreich bestätigt."
     }
@@ -360,7 +364,7 @@ function Ensure-BSSEProjectAvatar {
         throw "Project Avatar wurde per API gesetzt, aber der verwaltete SHA-256-Marker konnte nicht belastbar verifiziert werden."
     }
 
-    Write-Host "  [OK] Project avatar $ProjectName applied (Avatar API HTTP 200; managed SHA-256 marker verified)." -ForegroundColor Green
+    Write-Host "  [OK] Project avatar $ProjectName applied (Avatar API HTTP $($avatarResponse.StatusCode); managed SHA-256 marker verified)." -ForegroundColor Green
 
     return [pscustomobject]@{
         ProjectName = $ProjectName
