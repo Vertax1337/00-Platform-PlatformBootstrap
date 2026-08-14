@@ -36,6 +36,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\BSSE.AzureDevOps.Common.ps1"
+. "$PSScriptRoot\BSSE.AzureDevOps.CustomerProject.ps1"
 . "$PSScriptRoot\BSSE.AzureDevOps.Branding.ps1"
 
 function Get-FirewallDefinitions {
@@ -256,42 +257,26 @@ if ([string]::IsNullOrWhiteSpace($CustomerSlug)) {
 $requestedProjectName = "CUST-$CustomerNumber-$CustomerSlug"
 $baseRepositories = @('CustomerConfiguration', 'Documentation')
 
-$json = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
-    'devops','project','list',
-    '--org', $OrganizationUrl,
-    '--output','json',
-    '--only-show-errors'
-)
-$projects = @((($json | ConvertFrom-Json).value) | ForEach-Object { $_.name })
+$resolution = Resolve-BSSECustomerProject `
+    -OrganizationUrl $OrganizationUrl `
+    -CustomerNumber $CustomerNumber `
+    -RequestedProjectName $requestedProjectName `
+    -DirectLookupAttempts 3
 
-# CustomerNumber is the stable technical identity. If the company was renamed,
-# reuse the already existing CUST-<number>-* project instead of creating a duplicate.
-$customerPrefix = "CUST-$CustomerNumber-"
-$matchingProjects = @(
-    $projects | Where-Object {
-        $_.StartsWith($customerPrefix, [System.StringComparison]::OrdinalIgnoreCase)
-    }
-)
+$projectName = $resolution.ProjectName
+$projectExists = $resolution.Exists
+$effectiveCustomerSlug = $resolution.EffectiveSlug
 
-if ($matchingProjects.Count -gt 1) {
-    throw "Mehrere Azure-DevOps-Projekte verwenden dieselbe CustomerNumber '$CustomerNumber': $($matchingProjects -join ', '). Die Kunden-ID muss eindeutig sein."
-}
+if ($projectExists) {
+    Assert-BSSECustomerProjectReadable `
+        -OrganizationUrl $OrganizationUrl `
+        -ProjectName $projectName | Out-Null
 
-if ($matchingProjects.Count -eq 1) {
-    $projectName = $matchingProjects[0]
-    $projectExists = $true
-    $effectiveCustomerSlug = $projectName.Substring($customerPrefix.Length)
-
-    if ($projectName -ne $requestedProjectName) {
+    if (-not $projectName.Equals($requestedProjectName, [System.StringComparison]::OrdinalIgnoreCase)) {
         Write-Host "[AUTO] Bestehender Kunde über CustomerNumber gefunden: $projectName" -ForegroundColor DarkCyan
         Write-Host "       Angegebener aktueller Name: $CustomerName" -ForegroundColor DarkGray
         Write-Host "       Projektname bleibt stabil; eine Umfirmierung erzeugt kein zweites Kundenprojekt." -ForegroundColor DarkGray
     }
-}
-else {
-    $projectName = $requestedProjectName
-    $projectExists = $false
-    $effectiveCustomerSlug = $CustomerSlug
 }
 
 $firewallDefinitions = @(Get-FirewallDefinitions -Names $Firewalls -CustomerProjectSlug $effectiveCustomerSlug)
@@ -365,7 +350,7 @@ elseif (-not $Apply) {
 else {
     Write-Host "[CREATE] Project $projectName" -ForegroundColor Green
 
-    Invoke-BSSEAzDevOpsOrThrow -Arguments @(
+    $createResult = Invoke-BSSEAz -Arguments @(
         'devops','project','create',
         '--org', $OrganizationUrl,
         '--name', $projectName,
@@ -373,8 +358,60 @@ else {
         '--process', 'Basic',
         '--source-control', 'git',
         '--visibility', 'private',
+        '--output','json',
         '--only-show-errors'
-    ) | Out-Null
+    )
+
+    if ($createResult.ExitCode -ne 0) {
+        if ($createResult.Output -match 'TF200019|already exists') {
+            Write-Host "[RECOVER] Azure DevOps reports that '$projectName' already exists. Resolving existing state instead of creating a duplicate." -ForegroundColor DarkCyan
+
+            $recovery = Resolve-BSSECustomerProject `
+                -OrganizationUrl $OrganizationUrl `
+                -CustomerNumber $CustomerNumber `
+                -RequestedProjectName $projectName `
+                -DirectLookupAttempts 5
+
+            if ($recovery.Exists) {
+                Assert-BSSECustomerProjectReadable `
+                    -OrganizationUrl $OrganizationUrl `
+                    -ProjectName $recovery.ProjectName | Out-Null
+
+                $retryParameters = @{
+                    OrganizationUrl = $OrganizationUrl
+                    CustomerNumber  = $CustomerNumber
+                    CustomerName    = $CustomerName
+                    CustomerSlug    = $CustomerSlug
+                    Modules         = @($Modules)
+                    Firewalls       = @($Firewalls)
+                    TenantId        = $TenantId
+                    Apply           = $true
+                }
+
+                Write-Host "[RECOVER] Existing project resolved as '$($recovery.ProjectName)'. Re-entering reconciliation path." -ForegroundColor DarkCyan
+                & $PSCommandPath @retryParameters
+                return
+            }
+
+            Write-Host "[BLOCKED] Azure DevOps says project '$projectName' exists, but the bootstrap identity cannot resolve it." -ForegroundColor Red
+            throw @"
+Azure DevOps meldet TF200019 / already exists für '$projectName',
+der vorhandene Projektzustand ist für die Bootstrap-Identität aber nicht belastbar auflösbar.
+
+Es wird absichtlich KEIN weiterer Create-Versuch durchgeführt.
+Prüfe projektbezogenen Zugriff bzw. den Zustand des bereits angelegten Projekts.
+
+Originalfehler:
+$($createResult.Output)
+"@
+        }
+
+        throw "Azure DevOps CLI command failed:`naz devops project create --org $OrganizationUrl --name $projectName`n$($createResult.Output)"
+    }
+
+    Assert-BSSECustomerProjectReadable `
+        -OrganizationUrl $OrganizationUrl `
+        -ProjectName $projectName | Out-Null
 
     $repos = @(Get-BSSEProjectRepositories -OrganizationUrl $OrganizationUrl -Project $projectName)
     $initialRepo = $repos | Where-Object { $_.name -eq $projectName } | Select-Object -First 1
