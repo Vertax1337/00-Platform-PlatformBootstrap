@@ -16,6 +16,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\BSSE.AzureDevOps.Common.ps1"
+. "$PSScriptRoot\BSSE.AzureDevOps.CustomerProject.ps1"
 
 function Expand-BSSEListArgument {
     param(
@@ -56,24 +57,20 @@ $Firewalls = @(
 $session = Initialize-BSSEAzureDevOpsSession -OrganizationUrl $OrganizationUrl
 $OrganizationUrl = $session.OrganizationUrl
 
-$json = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
-    'devops','project','list',
-    '--org', $OrganizationUrl,
-    '--output','json',
-    '--only-show-errors'
+$projects = @(
+    Get-BSSEAzureDevOpsProjects -OrganizationUrl $OrganizationUrl |
+        ForEach-Object { [string]$_.name }
 )
-
-$projects = @((($json | ConvertFrom-Json).value) | ForEach-Object { $_.name })
 $customerPrefix = "CUST-$CustomerNumber-"
 
 $matchingProjects = @(
     $projects | Where-Object {
-        $_.StartsWith($customerPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        $_ -and $_.StartsWith($customerPrefix, [System.StringComparison]::OrdinalIgnoreCase)
     }
 )
 
 if ($matchingProjects.Count -eq 0) {
-    throw "Kein Kundenprojekt mit CustomerNumber '$CustomerNumber' gefunden. Zuerst New-BSSECustomerProject.ps1 verwenden."
+    throw "Kein Kundenprojekt mit CustomerNumber '$CustomerNumber' gefunden. Zuerst New-BSSECustomerProject.ps1 verwenden bzw. den Projektzugriff der Bootstrap-Identität prüfen."
 }
 
 if ($matchingProjects.Count -gt 1) {
@@ -82,6 +79,10 @@ if ($matchingProjects.Count -gt 1) {
 
 $projectName = $matchingProjects[0]
 $customerSlug = $projectName.Substring($customerPrefix.Length)
+
+Assert-BSSECustomerProjectReadable `
+    -OrganizationUrl $OrganizationUrl `
+    -ProjectName $projectName | Out-Null
 
 $repos = @(Get-BSSEProjectRepositories -OrganizationUrl $OrganizationUrl -Project $projectName)
 $repoNames = @($repos | ForEach-Object { $_.name })
