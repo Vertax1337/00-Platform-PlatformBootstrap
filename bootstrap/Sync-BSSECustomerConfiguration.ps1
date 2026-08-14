@@ -29,6 +29,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\BSSE.AzureDevOps.Common.ps1"
+. "$PSScriptRoot\BSSE.AzureDevOps.CustomerProject.ps1"
 
 function Expand-BSSEListArgument {
     param([string[]]$Values)
@@ -223,35 +224,32 @@ if ([string]::IsNullOrWhiteSpace($CustomerSlug)) {
     $CustomerSlug = ConvertTo-BSSESlug -Value $CustomerName
 }
 
-$projectList = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
-    'devops','project','list',
-    '--org', $OrganizationUrl,
-    '--output','json',
-    '--only-show-errors'
-) | ConvertFrom-Json
+$requestedProjectName = "CUST-$CustomerNumber-$CustomerSlug"
+$resolution = Resolve-BSSECustomerProject `
+    -OrganizationUrl $OrganizationUrl `
+    -CustomerNumber $CustomerNumber `
+    -RequestedProjectName $requestedProjectName `
+    -DirectLookupAttempts 3
 
-$customerPrefix = "CUST-$CustomerNumber-"
-$matchingProjects = @(
-    $projectList.value |
-        ForEach-Object { $_.name } |
-        Where-Object { $_.StartsWith($customerPrefix, [System.StringComparison]::OrdinalIgnoreCase) }
-)
-
-if ($matchingProjects.Count -gt 1) {
-    throw "Mehrere Projekte verwenden CustomerNumber '$CustomerNumber': $($matchingProjects -join ', ')."
-}
-
-if ($matchingProjects.Count -eq 0) {
+if (-not $resolution.Exists) {
     if ($Apply) {
-        throw "Customer project CUST-$CustomerNumber-* existiert noch nicht. Führe zuerst New-BSSECustomerProject.ps1 -Apply aus."
+        throw "Customer project CUST-$CustomerNumber-* existiert noch nicht bzw. ist für die Bootstrap-Identität nicht auflösbar. Führe zuerst New-BSSECustomerProject.ps1 -Apply aus bzw. prüfe den Projektzugriff."
     }
 
     Write-Host "  [PLAN] Initialize CustomerConfiguration after project provisioning" -ForegroundColor Yellow
     return
 }
 
-$projectName = $matchingProjects[0]
-$effectiveSlug = $projectName.Substring($customerPrefix.Length)
+$projectName = $resolution.ProjectName
+$effectiveSlug = $resolution.EffectiveSlug
+
+if (-not $projectName.Equals($requestedProjectName, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-Host "  [AUTO] Existing customer resolved by CustomerNumber: $projectName" -ForegroundColor DarkCyan
+}
+
+Assert-BSSECustomerProjectReadable `
+    -OrganizationUrl $OrganizationUrl `
+    -ProjectName $projectName | Out-Null
 
 $repoJson = Invoke-BSSEAzDevOpsOrThrow -Arguments @(
     'repos','show',
