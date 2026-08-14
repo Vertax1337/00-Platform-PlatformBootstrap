@@ -1,5 +1,98 @@
 Set-StrictMode -Version Latest
 
+# Azure DevOps project creation is asynchronous. In the real BSSE-CloudOps runtime on
+# 2026-08-14, `az devops project create` returned VS800075 even though the server had
+# already created the project and subsequently made it readable. Customer onboarding
+# therefore treats VS800075 from this one command as a bounded materialization race.
+# All other Azure CLI calls retain the common fail-closed behavior unchanged.
+$script:BSSECustomerProjectCreateRecoveryAttempts = 20
+$script:BSSECustomerProjectCreateRecoveryDelaySeconds = 3
+
+if (-not (Get-Variable -Name BSSEInvokeAzCore -Scope Script -ErrorAction SilentlyContinue)) {
+    $script:BSSEInvokeAzCore = ${function:Invoke-BSSEAz}
+}
+
+function Invoke-BSSEAz {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$Arguments,
+
+        [switch]$PassThruOutput
+    )
+
+    $result = & $script:BSSEInvokeAzCore `
+        -Arguments $Arguments `
+        -PassThruOutput:$PassThruOutput
+
+    if ($result.ExitCode -eq 0) {
+        return $result
+    }
+
+    $isProjectCreate = (
+        $Arguments.Count -ge 3 -and
+        $Arguments[0] -eq 'devops' -and
+        $Arguments[1] -eq 'project' -and
+        $Arguments[2] -eq 'create'
+    )
+
+    if (-not $isProjectCreate -or $result.Output -notmatch 'VS800075') {
+        return $result
+    }
+
+    $orgIndex = [array]::IndexOf($Arguments, '--org')
+    $nameIndex = [array]::IndexOf($Arguments, '--name')
+
+    if (
+        $orgIndex -lt 0 -or $orgIndex + 1 -ge $Arguments.Count -or
+        $nameIndex -lt 0 -or $nameIndex + 1 -ge $Arguments.Count
+    ) {
+        return $result
+    }
+
+    $organizationUrl = [string]$Arguments[$orgIndex + 1]
+    $projectName = [string]$Arguments[$nameIndex + 1]
+    $attempts = [int]$script:BSSECustomerProjectCreateRecoveryAttempts
+    $delaySeconds = [int]$script:BSSECustomerProjectCreateRecoveryDelaySeconds
+
+    Write-Host "[WAIT] Project create returned VS800075 for '$projectName'. Waiting for asynchronous Azure DevOps materialization ..." -ForegroundColor Yellow
+
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        $show = & $script:BSSEInvokeAzCore -Arguments @(
+            'devops','project','show',
+            '--org', $organizationUrl,
+            '--project', $projectName,
+            '--output','json',
+            '--only-show-errors'
+        )
+
+        if ($show.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($show.Output)) {
+            try {
+                $project = $show.Output | ConvertFrom-Json
+            }
+            catch {
+                $project = $null
+            }
+
+            if ($project -and $project.name -and $project.name.Equals($projectName, [System.StringComparison]::OrdinalIgnoreCase)) {
+                Write-Host "[RECOVER] Project '$projectName' became readable after async create materialization (attempt $attempt/$attempts). Continuing the same onboarding run." -ForegroundColor DarkCyan
+                return [pscustomobject]@{
+                    ExitCode = 0
+                    Output   = $show.Output
+                }
+            }
+        }
+
+        if ($attempt -lt $attempts -and $delaySeconds -gt 0) {
+            Start-Sleep -Seconds $delaySeconds
+        }
+    }
+
+    $waitSeconds = [Math]::Max(0, ($attempts - 1) * $delaySeconds)
+    Write-Host "[BLOCKED] Project create returned VS800075 and '$projectName' did not become readable within approximately $waitSeconds seconds." -ForegroundColor Red
+    return $result
+}
+
 function Get-BSSEAzureDevOpsProjects {
     [CmdletBinding()]
     param(
