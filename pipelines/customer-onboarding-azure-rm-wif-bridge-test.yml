@@ -26,9 +26,9 @@ parameters:
   default: 'Bernd Schneider Software Engineering GmbH'
 
 - name: customerSlug
-  displayName: Customer slug (optional)
+  displayName: Customer slug (AUTO = generate from customer name)
   type: string
-  default: ''
+  default: 'AUTO'
 
 - name: tenantId
   displayName: Azure Tenant ID (optional)
@@ -168,7 +168,7 @@ stages:
             CustomerName    = '${{ parameters.customerName }}'
           }
 
-          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}') -and '${{ parameters.customerSlug }}' -ne 'AUTO') {
             $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
           }
 
@@ -261,7 +261,7 @@ stages:
             Apply           = $true
           }
 
-          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}') -and '${{ parameters.customerSlug }}' -ne 'AUTO') {
             $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
           }
 
@@ -315,7 +315,7 @@ stages:
             CustomerName    = '${{ parameters.customerName }}'
           }
 
-          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}')) {
+          if (-not [string]::IsNullOrWhiteSpace('${{ parameters.customerSlug }}') -and '${{ parameters.customerSlug }}' -ne 'AUTO') {
             $scriptParameters.CustomerSlug = '${{ parameters.customerSlug }}'
           }
 
