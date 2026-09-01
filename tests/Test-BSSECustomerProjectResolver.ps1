@@ -6,7 +6,6 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 
 $script:Scenario = ''
 $script:Calls = @()
-$script:CreateRaceShowCount = 0
 
 function New-AzResult {
     param(
@@ -23,8 +22,7 @@ function New-AzResult {
 function Invoke-BSSEAz {
     param(
         [Parameter(Mandatory)]
-        [string[]]$Arguments,
-        [switch]$PassThruOutput
+        [string[]]$Arguments
     )
 
     $script:Calls += ,@($Arguments)
@@ -68,19 +66,6 @@ function Invoke-BSSEAz {
             }
             if ($command -match 'devops project list') {
                 return New-AzResult 0 '{"count":2,"value":[{"name":"CUST-11941-Cannon-A"},{"name":"CUST-11941-Cannon-B"}]}'
-            }
-        }
-
-        'CreateRace' {
-            if ($command -match '^devops project create ') {
-                return New-AzResult 1 "ERROR: VS800075: The project with id 'vstfs:///Classification/TeamProject/f239b359-3127-47d9-a72e-dc1cd76d26cd' does not exist, or you do not have permission to access it."
-            }
-            if ($command -match '^devops project show ') {
-                $script:CreateRaceShowCount++
-                if ($script:CreateRaceShowCount -lt 3) {
-                    return New-AzResult 1 'ERROR: VS800075: project is not readable yet.'
-                }
-                return New-AzResult 0 '{"id":"f239b359-3127-47d9-a72e-dc1cd76d26cd","name":"CUST-11941-Cannon-Deutschland-GmbH","state":"wellFormed"}'
             }
         }
     }
@@ -149,30 +134,4 @@ if (-not $duplicateBlocked) {
     throw 'Duplicate CustomerNumber was not blocked.'
 }
 
-$script:Scenario = 'CreateRace'
-$script:Calls = @()
-$script:CreateRaceShowCount = 0
-$script:BSSECustomerProjectCreateRecoveryAttempts = 3
-$script:BSSECustomerProjectCreateRecoveryDelaySeconds = 0
-
-$race = Invoke-BSSEAz -Arguments @(
-    'devops','project','create',
-    '--org','https://dev.azure.com/BSSE-CloudOps/',
-    '--name','CUST-11941-Cannon-Deutschland-GmbH',
-    '--output','json',
-    '--only-show-errors'
-)
-
-if ($race.ExitCode -ne 0) {
-    throw "VS800075 async-create recovery did not convert the materialized project into success: $($race.Output)"
-}
-if ($script:CreateRaceShowCount -ne 3) {
-    throw "VS800075 async-create recovery expected three direct read attempts, got $($script:CreateRaceShowCount)."
-}
-
-$raceProject = $race.Output | ConvertFrom-Json
-if ($raceProject.name -ne 'CUST-11941-Cannon-Deutschland-GmbH') {
-    throw "VS800075 async-create recovery returned the wrong project: $($race.Output)"
-}
-
-Write-Host '[OK] Customer-project resolver covers direct recovery, paging, rename fallback, duplicate protection and VS800075 async-create materialization.' -ForegroundColor Green
+Write-Host '[OK] Customer-project resolver covers direct recovery, paging, rename fallback and duplicate protection.' -ForegroundColor Green

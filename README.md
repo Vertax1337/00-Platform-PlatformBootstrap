@@ -435,6 +435,67 @@ CUST-4711-Cannon-Deutschland-GmbH
 
 Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konvention für andere Projekte.
 
+## Zentral verwaltete Repository-Policies
+
+`PlatformBootstrap` ist die zentrale Source of Truth für wiederverwendbare
+Azure-Repos-Branch-Policies. Workload-Repositories beschreiben ihren Vertrag in
+`config/repository-policies.json`; die Reconciliation bleibt bewusst ein
+separater Schritt, weil die referenzierte Validation Pipeline bereits vorhanden
+sein muss.
+
+```powershell
+pwsh -NoProfile -File bootstrap/Sync-BSSERepositoryPolicies.ps1 `
+  -OrganizationUrl https://dev.azure.com/BSSE-CloudOps/ `
+  -RepositoryKey 20-IaC/Vaultwarden
+
+pwsh -NoProfile -File bootstrap/Sync-BSSERepositoryPolicies.ps1 `
+  -OrganizationUrl https://dev.azure.com/BSSE-CloudOps/ `
+  -RepositoryKey 20-IaC/Vaultwarden `
+  -Apply
+
+# Nur nach ausdrücklicher Freigabe und mit dem unveränderten Apply-Summary:
+pwsh -NoProfile -File bootstrap/Sync-BSSERepositoryPolicies.ps1 `
+  -OrganizationUrl https://dev.azure.com/BSSE-CloudOps/ `
+  -RepositoryKey 20-IaC/Vaultwarden `
+  -Rollback `
+  -AppliedStatePath <apply-summary.json>
+```
+
+Ohne `-Apply` liefert der Lauf ausschließlich `PLAN`, `EXISTS` oder
+`BLOCKED`. Mit `-Apply` werden nur eindeutig aufgelöste Sollobjekte geändert
+und unmittelbar zurückgelesen. Der Apply ist aus Azure Pipelines gesperrt und
+für den bewusst privilegierten lokalen Administrator vorgesehen.
+
+Das Break-Glass-Modell löst ausschließlich die beiden modernen Azure-DevOps-
+Anzeigenamen `Bypass policies when pushing` und `Bypass policies when
+completing pull requests` zur Laufzeit auf. Numerische Bits werden nicht
+festgeschrieben; der historische interne Name `PolicyExempt` ist weder Lookup-
+Schlüssel noch Fallback. Die regulär leere Break-Glass-Gruppe erhält exakt
+diese beiden Branch-Allows und insbesondere kein `Contribute`, `Force push`,
+`Edit policies` oder `Manage permissions`.
+
+Der Vaultwarden-Vertrag verwaltet exakt zwei blockierende Policies: die
+automatische `Vaultwarden-CI` Build Validation und die Auflösung aktiver
+Kommentar-Threads. Eine Minimum-Reviewer-Policy gehört ausdrücklich nicht zum
+Desired State; der PR-Autor darf nach grüner CI und aufgelösten Kommentaren
+selbst abschließen. Eine aus dem verworfenen Zwischenvertrag exakt erkannte
+Bootstrap-Reviewer-Policy wird als verwaltete Drift kontrolliert entfernt.
+Abweichende oder fremde Reviewer-Policies werden nicht gelöscht, sondern
+führen zu `BLOCKED`.
+
+Der kontrollierte Rollback vergleicht Namespace, beide Anzeigenamen, interne
+Action-Namen und Laufzeit-Bits mit dem unveränderten Apply-Summary. Nur bei
+vollständiger Übereinstimmung setzt er exakt diese beiden Bits auf der
+verwalteten Gruppen-ACE zurück; alle anderen ACL-Einträge werden vor und nach
+dem Vorgang verglichen.
+
+Details:
+
+```text
+docs/PlatformBootstrap-Repository.md
+docs/Security-Modell.md
+```
+
 ## Aktueller Runtime-Verifikationsstatus
 
 ### Bereits real bestätigt
@@ -450,7 +511,13 @@ Aus dieser Entscheidung entsteht keine globale `<Projekt>-<Repository>`-Konventi
 - `Create new projects = Allow` real vergeben, unmittelbar danach verifiziert und später idempotent als `EXISTS` erkannt,
 - passender Azure-DevOps-Service-Endpoint-Typ mit `WorkloadIdentityFederation` real eindeutig erkannt,
 - realer Service-Connection-Create-Aufruf erreicht,
-- Azure DevOps hat bestätigt, dass `creationMode` im aktuellen Endpoint-Typ kein erlaubtes Input ist.
+- Azure DevOps hat bestätigt, dass `creationMode` im aktuellen Endpoint-Typ kein erlaubtes Input ist,
+- Vaultwarden-Policyvertrag live angewendet, zurückgelesen und idempotent mit
+  exakt Build Validation und Comment Resolution ohne verpflichtendes Human
+  Review verifiziert,
+- Vaultwarden-Probe-, Evidence- und Closure-PR einschließlich zweier
+  Probe-Merge-Kandidaten und abschließender `master`-Validierung erfolgreich
+  nachgewiesen.
 
 ### Noch offen / laufende Runtime-Verifikation
 
@@ -470,5 +537,7 @@ Bis diese Punkte abgeschlossen sind, bleibt v1.9 **Candidate**.
 docs/Customer-Onboarding-Setup.md
 docs/Techniker-Workflow.md
 docs/Project-Branding.md
+docs/PlatformBootstrap-Repository.md
+docs/Security-Modell.md
 docs/Umsetzungsplan.md
 ```

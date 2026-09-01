@@ -2,6 +2,15 @@
 
 ## v1.9 Candidate (`main`)
 
+- zentrale, wiederverwendbare Repository-Policy-Reconciliation für geschützte Azure-Repos-Branches ergänzt
+- erster versionierter Policyvertrag für `20-IaC/Vaultwarden/refs/heads/master` mit exakt Kommentarauflösung und blockierender automatischer `Vaultwarden-CI`-Build-Validation; kein verpflichtendes Human Review
+- die durch den verworfenen Drei-Policy-Zwischenstand erzeugte Minimum-Reviewer-Policy wird nur bei exakter Signatur als verwaltete Drift entfernt; fremde Reviewer-Policies werden nicht gelöscht
+- neue öffentliche Schnittstelle `bootstrap/Sync-BSSERepositoryPolicies.ps1` mit nicht mutierendem Dry Run, kontrolliertem Apply und anschließendem Read-back
+- moderne Bypass-Actions werden ausschließlich über die exakten Anzeigenamen `Bypass policies when pushing` und `Bypass policies when completing pull requests` dynamisch aufgelöst; keine festgeschriebenen Bits und kein `PolicyExempt`-Fallback
+- regulär leere Break-Glass-Gruppe erhält exakt die beiden modernen Bypass-Allows und ausdrücklich kein Contribute, Force push, Edit policies oder Manage permissions
+- effektive direkte und transitive Bypass-Rechte normaler Benutzer sowie fremde Bestands-/Legacy-ACLs werden Fail Closed geprüft
+- neue Mock-/Vertragstests `tests/Test-BSSERepositoryPolicy.ps1` für dynamische Bits, Legacy-/Mehrdeutigkeitsfehler, exakte ACEs, Drift, Incident-Preflight, Dry Run, Rollback-Grenzen und Idempotenz
+- Live-Apply, idempotenter Read-back sowie Probe-, Evidence- und Closure-PR für Vaultwarden WC-01.4 real erfolgreich nachgewiesen
 - zentrale Project-Branding-Komponente `bootstrap/BSSE.AzureDevOps.Branding.ps1` code-seitig implementiert
 - verbindliches Avatar-Mapping für `00-Platform`, `10-Automation`, `20-IaC`, `99-LAB` und alle `CUST-*`
 - die fünf freigegebenen Original-Branding-Assets sind unter `assets/project-icons/` in `main` versioniert; Dateinamen, Größen und Git-Blob-Inhalte wurden gegen die zuvor geprüften ZIP-Originale abgeglichen

@@ -2,7 +2,7 @@
 
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
 **Version:** 1.9 Candidate  
-**Stand:** 2026-08-13
+**Stand:** 2026-08-31
 
 > `main` ist der Arbeits- und Source-of-Truth-Branch. Dieser Plan enthält die bindenden Architekturentscheidungen, den bestätigten Runtime-Stand und die offenen Umsetzungsschritte. Detaildiagnosen werden in den zugehörigen Fachdokumentationen gepflegt. Eine Phase gilt erst als abgeschlossen, wenn Fachdokumentation und dieser kanonische Plan denselben bestätigten Status enthalten.
 
@@ -451,6 +451,45 @@ Project: CUST-00000-Bernd-Schneider-Software-Engineering-GmbH
 Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 ```
 
+### 14.1 Zentrale Repository-Policy-Reconciliation
+
+`00-Platform/PlatformBootstrap` ist Source of Truth für wiederverwendbare
+Branch-Policy-Verträge und deren idempotente Reconciliation. Die jeweilige
+Workload bleibt Source of Truth für ihre Pipeline und Entwicklerabläufe.
+Policy-Provisionierungslogik wird nicht in Workload-Repositories dupliziert.
+
+Erster versionierter Vertrag:
+
+```text
+20-IaC / Vaultwarden / refs/heads/master
+```
+
+Der Sollzustand enthält exakt zwei blockierende Policies: aufgelöste
+Kommentar-Threads und die vorhandene `Vaultwarden-CI` als automatische Build
+Validation für jeden aktuellen PR-Merge-Kandidaten. Eine Minimum-Reviewer-
+Policy, unabhängige zweite Freigabe oder Vote-Reset gehören ausdrücklich nicht
+zum Vertrag. Der Autor darf nach grüner CI und aufgelösten Kommentaren selbst
+abschließen. Die Policy-Reconciliation bleibt ein nachgelagerter separater
+Schritt, weil die workloadseitige Pipeline bereits existieren muss.
+
+Die im verworfenen WC-01.4-Zwischenstand durch PlatformBootstrap erzeugte
+Minimum-Reviewer-Policy ist verwaltete Drift. Sie wird nur bei exakter
+Übereinstimmung mit der versionierten alten Signatur entfernt. Abweichende oder
+fremde Reviewer-Policies werden nicht gelöscht und führen zu `BLOCKED`.
+
+Die Break-Glass-Gruppe ist im Normalzustand leer und besitzt ausschließlich
+`Bypass policies when pushing` sowie `Bypass policies when completing pull
+requests`. Beide Permission-Actions werden unmittelbar aus dem aktuellen Git-
+Security-Namespace anhand ihrer exakten modernen Anzeigenamen aufgelöst. Es
+gibt weder festgeschriebene Bits noch einen Fallback über den internen Legacy-
+Namen `PolicyExempt`.
+
+Fehlende oder mehrdeutige Actions, eine nicht leere Break-Glass-Gruppe,
+unerwartete zusätzliche Gruppenrechte, effektive Bypass-Rechte normaler
+Benutzer oder sicherheitsrelevante Bestands-/Legacy-ACLs führen Fail Closed zu
+`BLOCKED`. Fremde ACLs werden weder stillschweigend überschrieben noch
+automatisch bereinigt.
+
 ## 15. Implementierungsstatus
 
 ### Bereits beschlossen
@@ -465,6 +504,9 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - `Basic + 00-Platform/Readers + Create new projects = Allow`,
 - Pipeline darf sich nicht selbst privilegieren,
 - direktes Arbeiten auf `main`,
+- zentrale Branch-Policy-Reconciliation in PlatformBootstrap statt duplizierter Workload-Logik,
+- Vaultwarden-Policyvertrag aus exakt Build Validation und Comment Resolution ohne verpflichtendes Human Review,
+- regulär leere Break-Glass-Gruppe mit ausschließlich den zwei modernen dynamisch aufgelösten Bypass-Allows,
 - produktiver WIF-Zielzustand bleibt trotz Preview-BLOCKED unverändert,
 - AzureRM-WIF-Bridge ist nur temporärer E2E-Testpfad und keine Architekturänderung.
 
@@ -479,6 +521,10 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - WIF-Metadatenauflösung,
 - Entitlement-Retry für bestätigten `VS403283`,
 - ACL-Normalisierung / CreateProjects-Grant,
+- Repository-Policy-Schema und idempotente PLAN/APPLY/VERIFY-Reconciliation,
+- kontrollierte Entfernung ausschließlich der exakt erkannten obsoleten Bootstrap-Reviewer-Policy,
+- dynamische moderne Bypass-Auflösung, effektive Benutzerprüfung und Fail-Closed-Drifterkennung,
+- Mock-/Vertragstests für Repository-Policies und Break Glass,
 - `System.AccessToken`-Kompatibilitätsweg in Common/Branding/CustomerConfiguration,
 - temporäre System.AccessToken-E2E-Testpipeline,
 - temporäre AzureRM-WIF-Bridge-Testpipeline,
@@ -500,7 +546,13 @@ Tenant: f9acedfe-a77a-4831-b79c-f010afa6b889
 - passendes Probe-FIC,
 - UI-Finish-Setup-Request,
 - Diagnose-Cleanup eines Probe-Drafts mit HTTP 204,
-- `AzureADMyOrg` für die Plattform-App.
+- `AzureADMyOrg` für die Plattform-App,
+- Vaultwarden-Policyvertrag live angewendet, zurückgelesen und idempotent als
+  exakt Build Validation und Comment Resolution ohne verpflichtendes Human
+  Review verifiziert,
+- Vaultwarden-Probe-, Evidence- und Closure-PR einschließlich zweier
+  Probe-Merge-Kandidaten und abschließender `master`-Validierung erfolgreich
+  nachgewiesen.
 
 ### Noch offen
 

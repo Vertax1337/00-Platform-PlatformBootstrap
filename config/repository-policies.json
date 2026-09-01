@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "repositories": [
+    {
+      "key": "20-IaC/Vaultwarden",
+      "project": "20-IaC",
+      "repository": "Vaultwarden",
+      "branch": "refs/heads/master",
+      "buildValidation": {
+        "pipelineName": "Vaultwarden-CI",
+        "expectedYamlPath": "pipelines/validate.yml",
+        "displayName": "Vaultwarden-CI",
+        "enabled": true,
+        "blocking": true,
+        "manualQueueOnly": false,
+        "queueOnSourceUpdateOnly": false,
+        "validDurationMinutes": 0,
+        "pathFilters": []
+      },
+      "comments": {
+        "enabled": true,
+        "blocking": true
+      },
+      "obsoleteManagedPolicies": [
+        {
+          "key": "wc-01.4-reviewer-v1",
+          "policyType": "MinimumReviewers",
+          "minimumApproverCount": 1,
+          "creatorVoteCounts": false,
+          "allowDownvotes": false,
+          "blockLastPusherVote": true,
+          "resetOnSourcePush": true,
+          "resetRejectionsOnSourcePush": true,
+          "requireVoteOnLastIteration": false,
+          "requireVoteOnEachIteration": false
+        }
+      ],
+      "breakGlass": {
+        "groupName": "Vaultwarden Protected Branch Break Glass",
+        "description": "Temporärer, incidentgebundener Bypass ausschließlich für Vaultwarden/master; im Normalzustand ohne Mitglieder.",
+        "standingMembers": []
+      },
+      "normalUserGroups": [
+        "[20-IaC]\\20-IaC Team",
+        "[20-IaC]\\Contributors"
+      ]
+    }
+  ]
+}
