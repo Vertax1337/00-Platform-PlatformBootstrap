@@ -70,10 +70,23 @@ CUST-<CustomerNumber>-<CustomerSlug>
 
 ## Kunden-Repositories
 
+Verbindliche Basis:
+
 ```text
 CustomerConfiguration
 Documentation
+```
+
+Optional pro Firewall:
+
+```text
 Firewall-<CustomerSlug>-<FirewallSlug>
+```
+
+Optional pro produktiv verwaltetem Intune-Tenant:
+
+```text
+Intune-<TenantSlug>
 ```
 
 Beispiele:
@@ -81,9 +94,22 @@ Beispiele:
 ```text
 Firewall-Cannon-Deutschland-GmbH-HQ
 Firewall-Cannon-Deutschland-GmbH-Branch01
+Intune-cannon-prod
+Intune-cannon-lab
 ```
 
-Ein möglicher späterer Intune-Repositoryvertrag innerhalb der `CUST-*`-Boundary ist noch **nicht beschlossen** und wird nicht vorab in diese Namenskonvention aufgenommen.
+Für `Intune-<TenantSlug>` gilt:
+
+- `TenantSlug` ist ein beim ersten Onboarding persistierter, innerhalb des Kundenprojekts eindeutiger Alias,
+- die stabile technische Identität bleibt die Microsoft Entra Tenant ID,
+- Tenant-/Domain-/Kunden-Umbenennungen führen nicht automatisch zu Repository-Umbenennungen,
+- die kanonische Zuordnung liegt in `CustomerConfiguration/customer.yml` unter `intune.tenants[]`.
+
+Details:
+
+```text
+docs/Intune-Customer-Repository-Contract.md
+```
 
 ## Service Connections
 
