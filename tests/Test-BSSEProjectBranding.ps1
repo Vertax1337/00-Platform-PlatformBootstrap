@@ -44,6 +44,14 @@ foreach ($case in $mapping.GetEnumerator()) {
     }
 }
 
+# 30-IDD is now a managed Core project, but its approved source asset is not yet
+# versioned in PlatformBootstrap. Until that asset is explicitly added, the branding
+# resolver must return no mapping so that no unrelated Core icon is used as fallback.
+$pendingIdd = Get-BSSEProjectAvatarAssetRelativePath -ProjectName '30-IDD'
+if ($null -ne $pendingIdd) {
+    throw "30-IDD unexpectedly received branding mapping '$pendingIdd' before an approved 30-idd.png is versioned."
+}
+
 $unknown = Get-BSSEProjectAvatarAssetRelativePath -ProjectName 'Unmanaged-Project'
 if ($null -ne $unknown) {
     throw "Unmanaged project unexpectedly received branding mapping '$unknown'."
@@ -76,4 +84,4 @@ foreach ($entry in $expected.GetEnumerator()) {
     }
 }
 
-Write-Host '[OK] Project-branding mapping and all five source assets match the approved ZIP package.' -ForegroundColor Green
+Write-Host '[OK] Project-branding mapping, pending 30-IDD behavior and all five approved source assets are consistent.' -ForegroundColor Green

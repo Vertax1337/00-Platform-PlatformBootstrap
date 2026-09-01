@@ -34,6 +34,12 @@ $core = @(
         Repositories = @('Vaultwarden', 'AVD-Accelerator', 'Shared-IaC-Modules')
     },
     @{
+        Name = '30-IDD'
+        Description = 'BSSE Intune configuration management, default deployment and related lifecycle tooling.'
+        Repositories = @('IntuneDefaultDeployment')
+        BrandingPendingReason = 'The approved 30-IDD / Intune Default Deployment avatar is not yet versioned in PlatformBootstrap.'
+    },
+    @{
         Name = '99-LAB'
         Description = 'BSSE isolated validation and end-to-end lab project.'
         Repositories = @('LabConfiguration', 'LabDocumentation')
@@ -224,10 +230,16 @@ foreach ($project in $core) {
     }
 
     Write-Host "  Project branding:" -ForegroundColor Cyan
-    Ensure-BSSEProjectAvatar `
-        -OrganizationUrl $OrganizationUrl `
-        -ProjectName $project.Name `
-        -Apply:$Apply | Out-Null
+    if ($project.ContainsKey('BrandingPendingReason')) {
+        Write-Host "    [OPEN] $($project.BrandingPendingReason)" -ForegroundColor Yellow
+        Write-Host "           No fallback or unrelated project icon will be applied." -ForegroundColor DarkGray
+    }
+    else {
+        Ensure-BSSEProjectAvatar `
+            -OrganizationUrl $OrganizationUrl `
+            -ProjectName $project.Name `
+            -Apply:$Apply | Out-Null
+    }
 }
 
 Write-Host ""
@@ -235,5 +247,5 @@ if (-not $Apply) {
     Write-Host "Dry Run abgeschlossen. Es wurden keine Azure-DevOps-Objekte verändert." -ForegroundColor Cyan
 }
 else {
-    Write-Host "Core-Projekte, Repositories und verwaltetes Project Branding wurden idempotent angelegt bzw. verifiziert." -ForegroundColor Cyan
+    Write-Host "Core-Projekte, Repositories und das jeweils freigegebene Project Branding wurden idempotent angelegt bzw. verifiziert." -ForegroundColor Cyan
 }

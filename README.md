@@ -23,6 +23,9 @@ BSSE-CloudOps
 │   ├── AVD-Accelerator
 │   └── Shared-IaC-Modules
 │
+├── 30-IDD
+│   └── IntuneDefaultDeployment
+│
 ├── 99-LAB
 │   ├── LabConfiguration
 │   └── LabDocumentation
@@ -56,6 +59,14 @@ AVD und Vaultwarden sind **keine** Customer-Onboarding-/Dokumentationsmodule. Ia
 ```text
 Validate → Lint/Security → Plan/What-If → Approval → Deploy → Verify
 ```
+
+### Intune Default Deployment / Configuration Lifecycle
+
+```text
+30-IDD / IntuneDefaultDeployment
+```
+
+`30-IDD` ist der eigene fachliche Core-Projektbereich für Intune Default Deployment und den Intune-Konfigurationslebenszyklus. IntuneCD und IntuneCD Monitor werden deshalb nicht als reine `10-Automation`-Collector eingeordnet. Die konkrete IntuneCD-/Monitor-Repository-, Runtime-, Identity- und Customer-Integration ist noch offen und wird in `docs/Intune-Default-Deployment.md` geführt.
 
 ### PlatformBootstrap vs. DocumentationEngine
 
@@ -222,7 +233,7 @@ Bei `[BLOCKED]` oder Exception **nicht blind mit `-Apply` fortfahren**. Ursache 
 Der Dependency-Bootstrap verwaltet folgende Kette:
 
 ```text
-Core-Projekte/-Repositories inkl. Project Branding
+Core-Projekte/-Repositories inkl. jeweils freigegebenem Project Branding
         ↓
 00-Platform/PlatformBootstrap Ausführungsquelle
         ↓
@@ -331,6 +342,7 @@ Mapping:
 00-Platform   → assets/project-icons/00-platform.png
 10-Automation → assets/project-icons/10-automation.png
 20-IaC        → assets/project-icons/20-iac.png
+30-IDD        → OPEN, freigegebenes 30-idd.png noch nicht versioniert
 99-LAB        → assets/project-icons/99-lab.png
 CUST-*        → assets/project-icons/cust-generic.png
 ```
@@ -341,13 +353,13 @@ Zentrale Implementierung:
 bootstrap/BSSE.AzureDevOps.Branding.ps1
 ```
 
-Der idempotente Sollzustand wird über folgende Project Property verwaltet:
+Der idempotente Sollzustand gebrandeter Projekte wird über folgende Project Property verwaltet:
 
 ```text
 BSSE.PlatformBootstrap.ProjectAvatarSha256
 ```
 
-Im realen BSSE-CloudOps-Lauf sind Avatar-PUT, Marker-PATCH/GET und der anschließende idempotente `EXISTS`-Zustand für alle vier Core-Projekte bereits bestätigt.
+Im realen BSSE-CloudOps-Lauf sind Avatar-PUT, Marker-PATCH/GET und der anschließende idempotente `EXISTS`-Zustand für die vier bisher gebrandeten Core-Projekte bestätigt. `30-IDD` wird bereits als Core-Projekt provisioniert, sein Avatar bleibt bis zur Integration des freigegebenen Originalassets bewusst unverändert.
 
 Bekannte Grenze: Eine ausschließlich manuelle Avatar-Änderung außerhalb des Bootstraps ist bei unverändertem Hash-Marker mit der dokumentierten Project-Avatar-Core-API nicht zuverlässig erkennbar.
 
@@ -371,7 +383,7 @@ OPNsenseDocumentation
 Firewalls
 ```
 
-AVD und Vaultwarden sind bewusst ausgeschlossen.
+AVD und Vaultwarden sind bewusst ausgeschlossen. Die spätere Intune-/IDD-Kundenintegration wird erst nach dem noch offenen `30-IDD ↔ CUST-*`-Contract in dieses Onboarding aufgenommen.
 
 Pipeline:
 
@@ -501,9 +513,9 @@ docs/Security-Modell.md
 ### Bereits real bestätigt
 
 - Azure-/Azure-DevOps-Authentifizierung im Plattform-Tenant,
-- Core-Projekte und erwartete Core-Repositories vorhanden,
+- die bisher verwalteten Core-Projekte und deren bisherige Core-Repositories,
 - `PlatformBootstrap`-Source-of-Truth-Guard,
-- Project Branding inkl. SHA-256-Marker für alle vier Core-Projekte,
+- Project Branding inkl. SHA-256-Marker für die vier bisher gebrandeten Core-Projekte,
 - idempotenter Folge-Apply des Project Brandings,
 - passwordless Entra App/Service Principal `sp-bsse-platform-bootstrap-azdo` erstellt,
 - Azure-DevOps-Entitlement `Basic + 00-Platform/Readers` erstellt und anschließend als `EXISTS` verifiziert,
@@ -521,6 +533,8 @@ docs/Security-Modell.md
 
 ### Noch offen / laufende Runtime-Verifikation
 
+- Core-Dry-Run gegen den vorhandenen `30-IDD`-Istzustand und Verifikation des geplanten/erkannten `IntuneDefaultDeployment`-Repositoryvertrags,
+- freigegebenes `30-idd.png` integrieren und 30-IDD-Branding aktivieren/verifizieren,
 - erfolgreicher Create von `sc-platform-bootstrap-azdo` nach der descriptor-basierten Entfernung des pauschalen `creationMode`,
 - `sc-platform-bootstrap-azdo` anschließend lesen/verifizieren,
 - `fic-sc-platform-bootstrap-azdo` erstellen/verifizieren,
@@ -537,6 +551,7 @@ Bis diese Punkte abgeschlossen sind, bleibt v1.9 **Candidate**.
 docs/Customer-Onboarding-Setup.md
 docs/Techniker-Workflow.md
 docs/Project-Branding.md
+docs/Intune-Default-Deployment.md
 docs/PlatformBootstrap-Repository.md
 docs/Security-Modell.md
 docs/Umsetzungsplan.md
