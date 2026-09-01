@@ -20,6 +20,7 @@ function Get-BSSEProjectAvatarAssetRelativePath {
         '00-platform'   { return 'assets/project-icons/00-platform.png' }
         '10-automation' { return 'assets/project-icons/10-automation.png' }
         '20-iac'        { return 'assets/project-icons/20-iac.png' }
+        '30-idd'        { return 'assets/project-icons/30-idd.png' }
         '99-lab'        { return 'assets/project-icons/99-lab.png' }
     }
 
