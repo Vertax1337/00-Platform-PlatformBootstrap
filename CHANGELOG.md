@@ -7,7 +7,9 @@
 - IntuneCD + IntuneCD Monitor fachlich `30-IDD` statt `10-Automation` zugeordnet; kundenspezifische Intune-Snapshots bleiben in der `CUST-*`-Boundary
 - Actual/Desired-Leitplanke für Intune festgelegt: IntuneCD-Kundenbackup = Actual State, freigegebener IDD-Stand = Desired State; keine implizite Vermischung
 - neue Fachdokumentation `docs/Intune-Default-Deployment.md` mit Upstream-Bewertung, offenen Auth-/Hosting-/Versionierungsfragen und DocumentationEngine-Schnittstelle
-- `30-IDD`-Branding bewusst als `OPEN` behandelt, solange kein freigegebenes `assets/project-icons/30-idd.png` versioniert ist; kein Fallback auf ein fremdes Core-Icon
+- `30-IDD`-Branding zunächst bewusst als `OPEN` behandelt, solange kein freigegebenes `assets/project-icons/30-idd.png` versioniert war; kein Fallback auf ein fremdes Core-Icon
+- anschließend vom Projektverantwortlichen eingebrachtes `assets/project-icons/30-idd.png` als eigenes Core-Brandingasset aktiviert; Git-Blob `8cbe66d5b92b864ddc136adb7e643e4e8055b824`, Dateigröße `1074185` Byte
+- `30-IDD` in das zentrale Avatar-Mapping aufgenommen, temporären `BrandingPendingReason` entfernt und Regressionstest um Mapping, PNG-Signatur, Dateigröße und Git-Blob-Identität erweitert; Azure-DevOps-Dry-Run/Apply/Marker-Readback bleibt runtime-offen
 - kanonischen `docs/Umsetzungsplan.md`, README und Namenskonventionen auf dieselbe `30-IDD`-Architekturgrenze synchronisiert
 - zentrale, wiederverwendbare Repository-Policy-Reconciliation für geschützte Azure-Repos-Branches ergänzt
 - erster versionierter Policyvertrag für `20-IaC/Vaultwarden/refs/heads/master` mit exakt Kommentarauflösung und blockierender automatischer `Vaultwarden-CI`-Build-Validation; kein verpflichtendes Human Review

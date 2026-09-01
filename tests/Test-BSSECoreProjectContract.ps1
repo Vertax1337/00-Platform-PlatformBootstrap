@@ -26,9 +26,9 @@ foreach ($projectName in $expectedCoreProjects) {
     }
 }
 
-$iddBlockPattern = "(?s)@\{\s*Name = '30-IDD'\s*Description = '[^']+'\s*Repositories = @\('IntuneDefaultDeployment'\)\s*BrandingPendingReason = '[^']+'\s*\}"
+$iddBlockPattern = "(?s)@\{\s*Name = '30-IDD'\s*Description = '[^']+'\s*Repositories = @\('IntuneDefaultDeployment'\)\s*\}"
 if ($content -notmatch $iddBlockPattern) {
-    throw '30-IDD Core contract must contain exactly the initial IntuneDefaultDeployment repository and an explicit pending-branding reason.'
+    throw '30-IDD Core contract must contain exactly the initial IntuneDefaultDeployment repository.'
 }
 
 $iacIndex = $content.IndexOf("Name = '20-IaC'", [System.StringComparison]::Ordinal)

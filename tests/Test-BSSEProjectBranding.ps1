@@ -32,6 +32,7 @@ $mapping = @{
     '00-Platform' = 'assets/project-icons/00-platform.png'
     '10-Automation' = 'assets/project-icons/10-automation.png'
     '20-IaC' = 'assets/project-icons/20-iac.png'
+    '30-IDD' = 'assets/project-icons/30-idd.png'
     '99-LAB' = 'assets/project-icons/99-lab.png'
     'CUST-00000-Bernd-Schneider-Software-Engineering-GmbH' = 'assets/project-icons/cust-generic.png'
     'CUST-11941-Cannon-Deutschland-GmbH' = 'assets/project-icons/cust-generic.png'
@@ -42,14 +43,6 @@ foreach ($case in $mapping.GetEnumerator()) {
     if ($actual -ne $case.Value) {
         throw "Branding mapping mismatch for '$($case.Key)': expected '$($case.Value)', got '$actual'."
     }
-}
-
-# 30-IDD is now a managed Core project, but its approved source asset is not yet
-# versioned in PlatformBootstrap. Until that asset is explicitly added, the branding
-# resolver must return no mapping so that no unrelated Core icon is used as fallback.
-$pendingIdd = Get-BSSEProjectAvatarAssetRelativePath -ProjectName '30-IDD'
-if ($null -ne $pendingIdd) {
-    throw "30-IDD unexpectedly received branding mapping '$pendingIdd' before an approved 30-idd.png is versioned."
 }
 
 $unknown = Get-BSSEProjectAvatarAssetRelativePath -ProjectName 'Unmanaged-Project'
@@ -84,4 +77,42 @@ foreach ($entry in $expected.GetEnumerator()) {
     }
 }
 
-Write-Host '[OK] Project-branding mapping, pending 30-IDD behavior and all five approved source assets are consistent.' -ForegroundColor Green
+# 30-IDD was added by the project owner after the original five-asset package.
+# Pin the exact Git blob identity and byte length here so the newly approved asset
+# is immutable in the same regression contract without inventing a SHA-256 value.
+$iddRelative = 'assets/project-icons/30-idd.png'
+$iddPath = Join-Path $repoRoot ($iddRelative -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+if (-not (Test-Path -LiteralPath $iddPath -PathType Leaf)) {
+    throw "Expected branding asset missing: $iddRelative"
+}
+
+$iddBytes = [System.IO.File]::ReadAllBytes($iddPath)
+if ($iddBytes.Length -ne 1074185) {
+    throw "Branding asset length mismatch for '$iddRelative': expected 1074185, got $($iddBytes.Length)."
+}
+
+for ($i = 0; $i -lt $pngSignature.Length; $i++) {
+    if ($iddBytes[$i] -ne $pngSignature[$i]) {
+        throw "Invalid PNG signature: $iddRelative"
+    }
+}
+
+$gitHeader = [System.Text.Encoding]::ASCII.GetBytes("blob $($iddBytes.Length)`0")
+$gitStream = [System.IO.MemoryStream]::new()
+$sha1 = [System.Security.Cryptography.SHA1]::Create()
+try {
+    $gitStream.Write($gitHeader, 0, $gitHeader.Length)
+    $gitStream.Write($iddBytes, 0, $iddBytes.Length)
+    $gitStream.Position = 0
+    $iddGitBlobSha = ([System.BitConverter]::ToString($sha1.ComputeHash($gitStream))).Replace('-', '').ToLowerInvariant()
+}
+finally {
+    $sha1.Dispose()
+    $gitStream.Dispose()
+}
+
+if ($iddGitBlobSha -ne '8cbe66d5b92b864ddc136adb7e643e4e8055b824') {
+    throw "Branding asset Git blob mismatch for '$iddRelative': expected 8cbe66d5b92b864ddc136adb7e643e4e8055b824, got $iddGitBlobSha."
+}
+
+Write-Host '[OK] Project-branding mapping and all six approved source assets are consistent.' -ForegroundColor Green

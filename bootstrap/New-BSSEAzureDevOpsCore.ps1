@@ -37,7 +37,6 @@ $core = @(
         Name = '30-IDD'
         Description = 'BSSE Intune configuration management, default deployment and related lifecycle tooling.'
         Repositories = @('IntuneDefaultDeployment')
-        BrandingPendingReason = 'The approved 30-IDD / Intune Default Deployment avatar is not yet versioned in PlatformBootstrap.'
     },
     @{
         Name = '99-LAB'

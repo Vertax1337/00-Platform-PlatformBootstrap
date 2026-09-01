@@ -1,10 +1,10 @@
 # Project Branding – Azure DevOps Project Avatars
 
-> **Status:** v1.9 Candidate. Project Branding ist für `00-Platform`, `10-Automation`, `20-IaC`, `99-LAB` und `CUST-*` code-seitig implementiert. Avatar-PUT, Project-Property-Marker und idempotenter `EXISTS`-Folgelauf wurden für die vier bisher gebrandeten Core-Projekte real bestätigt. `30-IDD` ist inzwischen ein Core-Projekt, besitzt im aktuell versionierten Brandingpaket aber noch kein freigegebenes `30-idd.png`; sein Branding bleibt deshalb ausdrücklich OPEN und wird nicht mit einem Fallback-Icon überschrieben.
+> **Status:** v1.9 Candidate. Project Branding ist für `00-Platform`, `10-Automation`, `20-IaC`, `30-IDD`, `99-LAB` und `CUST-*` code-seitig implementiert. Avatar-PUT, Project-Property-Marker und idempotenter `EXISTS`-Folgelauf wurden für die vier bisher runtime-geprüften Core-Projekte real bestätigt. Das neue `30-IDD`-Asset ist versioniert und code-seitig aktiviert; dessen Azure-DevOps-Apply/Readback ist noch offen.
 
 ## Zweck
 
-`PlatformBootstrap` verwaltet die Azure-DevOps-Projekt-Avatare als Teil des gewünschten Plattformzustands, sobald für den jeweiligen Projekttyp ein freigegebenes und versioniertes Branding-Asset existiert.
+`PlatformBootstrap` verwaltet die Azure-DevOps-Projekt-Avatare als Teil des gewünschten Plattformzustands für Projekttypen mit freigegebenem und versioniertem Branding-Asset.
 
 Versionierte Branding-Assets:
 
@@ -14,6 +14,7 @@ assets/
     ├── 00-platform.png
     ├── 10-automation.png
     ├── 20-iac.png
+    ├── 30-idd.png
     ├── 99-lab.png
     └── cust-generic.png
 ```
@@ -31,7 +32,7 @@ assets/
 → assets/project-icons/20-iac.png
 
 30-IDD
-→ OPEN: freigegebenes 30-idd.png noch nicht versioniert
+→ assets/project-icons/30-idd.png
 
 99-LAB
 → assets/project-icons/99-lab.png
@@ -42,18 +43,6 @@ CUST-*
 
 Alle Kundenprojekte verwenden zunächst dasselbe generische Customer-Icon.
 
-Für `30-IDD` gilt bis zur Integration des freigegebenen Intune-Default-Deployment-Originalassets ausdrücklich:
-
-```text
-Project-/Repository-Provisioning
-→ verwaltet
-
-Project Branding
-→ OPEN / keine Änderung
-```
-
-Es wird weder ein anderes Core-Icon als Fallback verwendet noch ein neues Brandingasset stillschweigend erfunden.
-
 ## Zentrale Implementierung
 
 Die wiederverwendbare Branding-Logik liegt in:
@@ -62,7 +51,7 @@ Die wiederverwendbare Branding-Logik liegt in:
 bootstrap/BSSE.AzureDevOps.Branding.ps1
 ```
 
-Die Projekt-Provisionierung ruft für Projekte mit freigegebenem Branding ausschließlich diese zentrale Funktion auf:
+Die Projekt-Provisionierung ruft für die verwalteten Projekttypen diese zentrale Funktion auf:
 
 ```text
 Ensure-BSSEProjectAvatar
@@ -70,10 +59,10 @@ Ensure-BSSEProjectAvatar
 
 Verwendung:
 
-- `New-BSSEAzureDevOpsCore.ps1` provisioniert `00-Platform`, `10-Automation`, `20-IaC`, `30-IDD` und `99-LAB`; für `30-IDD` wird bis zum freigegebenen Asset ein expliziter `OPEN`-Status ausgegeben und kein Avatar-Write ausgeführt,
+- `New-BSSEAzureDevOpsCore.ps1` provisioniert `00-Platform`, `10-Automation`, `20-IaC`, `30-IDD` und `99-LAB` und führt für alle fünf Core-Projekte denselben Brandingvertrag aus,
 - `New-BSSECustomerProject.ps1` verwendet die Brandingfunktion für alle `CUST-*`-Projekte.
 
-Damit bleibt die bestehende fail-closed Brandinglogik unverändert. Der neue Core-Projekttyp wird nicht durch ein fehlendes, noch nicht freigegebenes Asset künstlich blockiert.
+Damit gilt für `30-IDD` jetzt derselbe fail-closed Brandingpfad wie für die übrigen Core-Projekte.
 
 ## Microsoft-API
 
@@ -118,7 +107,7 @@ Der PATCH erwartet `application/json-patch+json` und einen `JsonPatchDocument`-B
 ]
 ```
 
-Ein früher realer Apply erreichte diesen PATCH und erhielt HTTP 500, weil das zuvor mit `@(...) | ConvertTo-Json` erzeugte ein-elementige Array von PowerShell in der Pipeline enumeriert und als einzelnes JSON-Objekt serialisiert wurde. Der Code verwendet deshalb `ConvertTo-Json -InputObject $patchDocument` und prüft zusätzlich, dass der serialisierte Body tatsächlich mit `[` beginnt. Nach dieser Korrektur wurden Marker-PATCH/GET und Idempotenz für alle vier gebrandeten Core-Projekte real erfolgreich verifiziert.
+Ein früher realer Apply erreichte diesen PATCH und erhielt HTTP 500, weil das zuvor mit `@(...) | ConvertTo-Json` erzeugte ein-elementige Array von PowerShell in der Pipeline enumeriert und als einzelnes JSON-Objekt serialisiert wurde. Der Code verwendet deshalb `ConvertTo-Json -InputObject $patchDocument` und prüft zusätzlich, dass der serialisierte Body tatsächlich mit `[` beginnt. Nach dieser Korrektur wurden Marker-PATCH/GET und Idempotenz für die vier bisher runtime-geprüften Core-Projekte real erfolgreich verifiziert.
 
 Die bestehende Bootstrap-Authentifizierung wird weiterverwendet:
 
@@ -221,13 +210,11 @@ Ein neuer Projekt-Dry-Run kann das Projekt naturgemäß noch nicht auflösen. In
 
 Bei Apply wird das Projekt mit Retry erneut aufgelöst; fehlt anschließend weiterhin eine Project-ID, wird der Lauf blockiert.
 
-Für einen Core-Projekteintrag mit ausdrücklich dokumentiertem `BrandingPendingReason` wird diese Brandingpipeline nicht aufgerufen. Stattdessen zeigt `New-BSSEAzureDevOpsCore.ps1` den offenen Brandingzustand an und verändert den bestehenden Avatar nicht.
-
 ## Fehlerbehandlung
 
 Project Branding ist nach Freigabe eines Assets ein verwalteter Bestandteil des Sollzustands und keine rein kosmetische Best-Effort-Aktion.
 
-Daher gilt für gebrandete Projekttypen:
+Daher gilt:
 
 ```text
 Asset fehlt/ist ungültig
@@ -249,8 +236,6 @@ Hash-Marker nicht schreib-/les-/verifizierbar
 → BLOCKED / Fehler
 ```
 
-Ein **explizit dokumentierter** Core-Projekttyp ohne bereits freigegebenes/versioniertes Brandingasset ist davon getrennt: Das Provisioning bleibt möglich, der Avatar bleibt unverändert und der Status wird sichtbar als `OPEN` ausgegeben.
-
 Der Bootstrap rollt bereits vorher erfolgreich angelegte Azure-DevOps-Objekte nicht zurück oder löscht sie. Ein erneuter Lauf kann den noch fehlenden Branding-Sollzustand nach Behebung der Ursache fortsetzen.
 
 ## Berechtigungen
@@ -270,42 +255,44 @@ Für neu durch PlatformBootstrap erzeugte `CUST-*`-Projekte wird die bereits bes
 
 ## Asset-Integrität
 
-Das bisher freigegebene Brandingpaket wurde vor der Implementierung geprüft. Es enthält exakt fünf PNGs unter `assets/project-icons/`; alle fünf sind valide PNGs mit 1254×1254 Pixeln im RGB-Modus.
+Das ursprünglich freigegebene Brandingpaket enthält fünf PNGs. Diese fünf ursprünglichen Assets bleiben im Regressionstest über ihre geprüften Dateigrößen und SHA-256-Werte fixiert.
 
-Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` fixiert die geprüften Originalgrößen und SHA-256-Werte. Die fünf freigegebenen Source Assets sind in `main` versioniert und bytegenau gegen die geprüften Originale abgeglichen.
+Das `30-IDD`-Asset wurde anschließend separat durch den Projektverantwortlichen in `assets/project-icons/30-idd.png` versioniert. Der aktuell versionierte Stand besitzt:
 
-`30-IDD` war nicht Bestandteil dieses fünfteiligen Brandingpakets. Das vorhandene Intune-Default-Deployment-Logo muss deshalb als eigener, bewusst freigegebener Asset-Schritt integriert werden. Erst dann werden `30-idd.png`, Mapping und Hash-Test gemeinsam erweitert.
+```text
+Dateigröße: 1074185 Byte
+Git Blob:   8cbe66d5b92b864ddc136adb7e643e4e8055b824
+```
+
+Der Regressionstest `tests/Test-BSSEProjectBranding.ps1` pinnt für dieses nachträglich ergänzte Asset die Dateigröße und exakte Git-Blob-Identität, prüft die PNG-Signatur und prüft das Mapping `30-IDD → assets/project-icons/30-idd.png`. Der für die Azure-DevOps-Project-Property benötigte SHA-256 wird von der produktiven Brandinglogik direkt aus den versionierten Bytes berechnet.
 
 ## Verifikationsstatus
 
 ### Bereits verifiziert
 
 - ursprünglicher ZIP-Inhalt und Pfade,
-- PNG-Gültigkeit, Dimension und Farbmodus der fünf Source Assets,
-- Bytegrößen und SHA-256 der fünf Source Assets,
-- Assets im `main`-Git-Tree bytegenau gegen die geprüften Originale abgeglichen,
+- PNG-Gültigkeit, Dimension und Farbmodus der fünf ursprünglichen Source Assets,
+- Bytegrößen und SHA-256 der fünf ursprünglichen Source Assets,
+- diese fünf Assets im Git-Tree bytegenau gegen die geprüften Originale abgeglichen,
+- `30-idd.png` als Repository-Asset vorhanden; GitHub meldet Dateigröße `1074185` Byte und Git-Blob `8cbe66d5b92b864ddc136adb7e643e4e8055b824`,
 - Core-/Customer-Provisionierungsintegration code-seitig,
 - Avatar-PUT akzeptiert den real beobachteten HTTP-204-Erfolg,
 - Marker-PATCH/GET nach JSON-Patch-Korrektur real erfolgreich,
 - Branding für `00-Platform`, `10-Automation`, `20-IaC` und `99-LAB` real angewendet,
-- Folge-Apply erkennt die vier gebrandeten Core-Projekte idempotent als `EXISTS`.
+- Folge-Apply erkennt diese vier runtime-geprüften Core-Projekte idempotent als `EXISTS`.
 
 ### Code-seitig implementiert
 
-- zentrales Mapping,
+- zentrales Mapping einschließlich `30-IDD`,
 - Asset-/PNG-Validierung,
 - SHA-256-Markerstrategie,
 - Core-Projektintegration,
 - Customer-Projektintegration,
 - Dry-Run-/Apply-/Fail-Closed-Verhalten,
-- Regressionstest mit den freigegebenen Asset-Hashes,
-- expliziter Core-Projektzustand für noch nicht freigegebenes Branding ohne Fallback-Write.
+- Regressionstest für alle sechs aktuell verwalteten Source Assets,
+- `30-IDD` verwendet denselben produktiven Brandingpfad wie die übrigen Core-Projekte.
 
 ### Noch offen
 
-- freigegebenes Intune-Default-Deployment-Originalasset als `assets/project-icons/30-idd.png` integrieren,
-- `Get-BSSEProjectAvatarAssetRelativePath` um `30-IDD` erweitern,
-- Regressionstest um Größe/SHA-256 von `30-idd.png` erweitern,
-- `BrandingPendingReason` für `30-IDD` aus dem Core-Vertrag entfernen,
-- Branding für `30-IDD` per Dry Run → Apply → Readback → idempotentem Folge-Dry-Run verifizieren,
-- tatsächliche Anzeige des 30-IDD-Icons in der Azure-DevOps-UI bestätigen.
+- Branding für `30-IDD` per Dry Run → Apply → Marker-Readback → idempotentem Folge-Dry-Run in Azure DevOps verifizieren,
+- tatsächliche Anzeige des `30-IDD`-Icons in der Azure-DevOps-UI bestätigen.

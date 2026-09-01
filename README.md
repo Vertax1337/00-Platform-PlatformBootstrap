@@ -332,6 +332,7 @@ assets/
     ├── 00-platform.png
     ├── 10-automation.png
     ├── 20-iac.png
+    ├── 30-idd.png
     ├── 99-lab.png
     └── cust-generic.png
 ```
@@ -342,7 +343,7 @@ Mapping:
 00-Platform   → assets/project-icons/00-platform.png
 10-Automation → assets/project-icons/10-automation.png
 20-IaC        → assets/project-icons/20-iac.png
-30-IDD        → OPEN, freigegebenes 30-idd.png noch nicht versioniert
+30-IDD        → assets/project-icons/30-idd.png
 99-LAB        → assets/project-icons/99-lab.png
 CUST-*        → assets/project-icons/cust-generic.png
 ```
@@ -359,7 +360,7 @@ Der idempotente Sollzustand gebrandeter Projekte wird über folgende Project Pro
 BSSE.PlatformBootstrap.ProjectAvatarSha256
 ```
 
-Im realen BSSE-CloudOps-Lauf sind Avatar-PUT, Marker-PATCH/GET und der anschließende idempotente `EXISTS`-Zustand für die vier bisher gebrandeten Core-Projekte bestätigt. `30-IDD` wird bereits als Core-Projekt provisioniert, sein Avatar bleibt bis zur Integration des freigegebenen Originalassets bewusst unverändert.
+Im realen BSSE-CloudOps-Lauf sind Avatar-PUT, Marker-PATCH/GET und der anschließende idempotente `EXISTS`-Zustand für die vier bisher runtime-geprüften Core-Projekte bestätigt. Das `30-IDD`-Asset ist inzwischen versioniert und code-seitig aktiviert; dessen Azure-DevOps-Dry-Run/Apply/Marker-Readback bleibt noch offen.
 
 Bekannte Grenze: Eine ausschließlich manuelle Avatar-Änderung außerhalb des Bootstraps ist bei unverändertem Hash-Marker mit der dokumentierten Project-Avatar-Core-API nicht zuverlässig erkennbar.
 
@@ -515,7 +516,7 @@ docs/Security-Modell.md
 - Azure-/Azure-DevOps-Authentifizierung im Plattform-Tenant,
 - die bisher verwalteten Core-Projekte und deren bisherige Core-Repositories,
 - `PlatformBootstrap`-Source-of-Truth-Guard,
-- Project Branding inkl. SHA-256-Marker für die vier bisher gebrandeten Core-Projekte,
+- Project Branding inkl. SHA-256-Marker für die vier bisher runtime-geprüften Core-Projekte,
 - idempotenter Folge-Apply des Project Brandings,
 - passwordless Entra App/Service Principal `sp-bsse-platform-bootstrap-azdo` erstellt,
 - Azure-DevOps-Entitlement `Basic + 00-Platform/Readers` erstellt und anschließend als `EXISTS` verifiziert,
@@ -534,7 +535,7 @@ docs/Security-Modell.md
 ### Noch offen / laufende Runtime-Verifikation
 
 - Core-Dry-Run gegen den vorhandenen `30-IDD`-Istzustand und Verifikation des geplanten/erkannten `IntuneDefaultDeployment`-Repositoryvertrags,
-- freigegebenes `30-idd.png` integrieren und 30-IDD-Branding aktivieren/verifizieren,
+- `30-IDD`-Branding per Dry Run/Apply/Marker-Readback/idempotentem Folge-Dry-Run verifizieren,
 - erfolgreicher Create von `sc-platform-bootstrap-azdo` nach der descriptor-basierten Entfernung des pauschalen `creationMode`,
 - `sc-platform-bootstrap-azdo` anschließend lesen/verifizieren,
 - `fic-sc-platform-bootstrap-azdo` erstellen/verifizieren,

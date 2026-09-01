@@ -1,6 +1,6 @@
 # 30-IDD – Intune Default Deployment und Configuration Lifecycle
 
-> **Status:** Architekturgrenze BESCHLOSSEN; Core-Bootstrap-Integration code-seitig IMPLEMENTIERT; Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Integration noch offen.  
+> **Status:** Architekturgrenze BESCHLOSSEN; Core-Bootstrap-Integration und `30-IDD`-Branding code-seitig IMPLEMENTIERT; Azure-DevOps-Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Integration noch offen.  
 > **Stand:** 2026-09-01
 
 ## 1. Zweck und Verantwortungsgrenze
@@ -183,19 +183,32 @@ Der Intune-Adapter und sein Input-Contract werden im DocumentationEngine-Projekt
 
 ## 9. Branding
 
-`30-IDD` ist ab dieser Architekturentscheidung ein Core-Projekt, besitzt im aktuell versionierten PlatformBootstrap-Brandingpaket aber noch **kein** freigegebenes `30-idd.png`.
+Das vom Projektverantwortlichen eingebrachte Asset ist jetzt versioniert:
 
-Bis das bereits vorgesehene Intune-Default-Deployment-Logo als freigegebenes Asset in `assets/project-icons/` aufgenommen wurde, gilt:
+```text
+assets/project-icons/30-idd.png
+```
+
+Der GitHub-Stand weist dafür aktuell die unveränderliche Git-Blob-ID
+
+```text
+8cbe66d5b92b864ddc136adb7e643e4e8055b824
+```
+
+und eine Dateigröße von `1074185` Byte aus. PlatformBootstrap ordnet `30-IDD` diesem Asset nun wie die übrigen Core-Projekte über die zentrale Branding-Komponente zu. Die lokale Assetprüfung validiert PNG-Signatur und berechnet den für Azure DevOps verwendeten SHA-256-Marker dynamisch.
+
+Damit gilt code-seitig:
 
 ```text
 30-IDD Project/Repository Provisioning
-→ verwaltet
+→ IMPLEMENTIERT
 
 30-IDD Project Branding
-→ OPEN / bewusst nicht verändert
-```
+→ IMPLEMENTIERT
 
-Es wird kein bestehendes Core-Icon als Fallback missbraucht und kein neues Logo stillschweigend erfunden.
+30-IDD Runtime Apply/Verify in Azure DevOps
+→ OFFEN
+```
 
 ## 10. Status
 
@@ -211,12 +224,12 @@ Es wird kein bestehendes Core-Icon als Fallback missbraucht und kein neues Logo 
 
 - `New-BSSEAzureDevOpsCore.ps1` kennt `30-IDD`.
 - `IntuneDefaultDeployment` ist als initialer Repository-Sollzustand im Core-Bootstrap hinterlegt.
-- Solange kein freigegebenes 30-IDD-Brandingasset versioniert ist, wird Branding explizit als `OPEN` ausgegeben und nicht verändert.
-- Regressionstests decken den minimalen `30-IDD`-Core-Vertrag und den bewusst ausstehenden Brandingzustand ab.
+- `assets/project-icons/30-idd.png` ist als eigenes Core-Brandingasset versioniert und im zentralen Mapping aktiviert.
+- Regressionstests decken den minimalen `30-IDD`-Core-Vertrag sowie Mapping, PNG-Integrität, Dateigröße und die festgeschriebene Git-Blob-Identität des neuen Assets ab.
 
 ### Noch offen
 
-- freigegebenes `30-idd.png` in PlatformBootstrap integrieren und Branding aktivieren,
+- `30-IDD`-Repositoryvertrag und Branding per Azure-DevOps-Dry-Run/Apply/Verify runtime-verifizieren,
 - IntuneCD-/Monitor-Repositorystruktur,
 - Upstream-Versionierungs-/Fork-Strategie,
 - produktive Runtime/Hosting,
@@ -229,4 +242,4 @@ Es wird kein bestehendes Core-Icon als Fallback missbraucht und kein neues Logo 
 
 ### Runtime-Verifikation ausstehend
 
-Als nächstes ist ein Core-Dry-Run gegen `BSSE-CloudOps` erforderlich. Erst danach darf bestätigt werden, wie der vorhandene `30-IDD`-Istzustand vom neuen Bootstrap-Vertrag erkannt wird und ob eine Repository-Umbenennung/-Erstellung geplant ist.
+Als nächstes ist ein Core-Dry-Run gegen `BSSE-CloudOps` erforderlich. Erst danach darf bestätigt werden, wie der vorhandene `30-IDD`-Istzustand vom neuen Bootstrap-Vertrag erkannt wird, ob die Repository-Umbenennung/-Erstellung wie erwartet geplant wird und ob das neue Branding als kontrollierter `PLAN` erscheint.
