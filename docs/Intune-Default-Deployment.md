@@ -1,6 +1,6 @@
 # 30-IDD – Intune Default Deployment und Configuration Lifecycle
 
-> **Status:** Architekturgrenze BESCHLOSSEN; Core-Bootstrap-Integration code-seitig in Umsetzung; IntuneCD-/IntuneCD-Monitor-Integration noch offen.  
+> **Status:** Architekturgrenze BESCHLOSSEN; Core-Bootstrap-Integration code-seitig IMPLEMENTIERT; Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Integration noch offen.  
 > **Stand:** 2026-09-01
 
 ## 1. Zweck und Verantwortungsgrenze
@@ -207,11 +207,12 @@ Es wird kein bestehendes Core-Icon als Fallback missbraucht und kein neues Logo 
 - Kundenspezifische Intune-Snapshots gehören fachlich zur `CUST-*`-Boundary.
 - Intune Actual State und freigegebener IDD Desired State werden getrennt behandelt.
 
-### Code-seitig mit dieser Änderung vorgesehen
+### Bereits implementiert
 
 - `New-BSSEAzureDevOpsCore.ps1` kennt `30-IDD`.
-- `IntuneDefaultDeployment` wird als initialer Repository-Sollzustand reconciled.
+- `IntuneDefaultDeployment` ist als initialer Repository-Sollzustand im Core-Bootstrap hinterlegt.
 - Solange kein freigegebenes 30-IDD-Brandingasset versioniert ist, wird Branding explizit als `OPEN` ausgegeben und nicht verändert.
+- Regressionstests decken den minimalen `30-IDD`-Core-Vertrag und den bewusst ausstehenden Brandingzustand ab.
 
 ### Noch offen
 
@@ -228,4 +229,4 @@ Es wird kein bestehendes Core-Icon als Fallback missbraucht und kein neues Logo 
 
 ### Runtime-Verifikation ausstehend
 
-Nach Merge ist zunächst ein Core-Dry-Run gegen `BSSE-CloudOps` erforderlich. Erst danach darf bestätigt werden, wie der vorhandene `30-IDD`-Istzustand vom neuen Bootstrap-Vertrag erkannt wird und ob eine Repository-Umbenennung/-Erstellung geplant ist.
+Als nächstes ist ein Core-Dry-Run gegen `BSSE-CloudOps` erforderlich. Erst danach darf bestätigt werden, wie der vorhandene `30-IDD`-Istzustand vom neuen Bootstrap-Vertrag erkannt wird und ob eine Repository-Umbenennung/-Erstellung geplant ist.
