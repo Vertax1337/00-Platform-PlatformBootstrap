@@ -2,7 +2,7 @@
 
 **Status:** Source-of-Truth / v1.9 Candidate in Umsetzung  
 **Version:** 1.9 Candidate  
-**Stand:** 2026-08-31
+**Stand:** 2026-09-01
 
 > `main` ist der Arbeits- und Source-of-Truth-Branch. Dieser Plan enthält die bindenden Architekturentscheidungen, den bestätigten Runtime-Stand und die offenen Umsetzungsschritte. Detaildiagnosen werden in den zugehörigen Fachdokumentationen gepflegt. Eine Phase gilt erst als abgeschlossen, wenn Fachdokumentation und dieser kanonische Plan denselben bestätigten Status enthalten.
 
@@ -25,6 +25,9 @@
 ├── AVD-Accelerator
 └── Shared-IaC-Modules
 
+30-IDD
+└── IntuneDefaultDeployment
+
 99-LAB
 ├── LabConfiguration
 └── LabDocumentation
@@ -40,10 +43,26 @@ CUST-<CustomerNumber>-<CustomerSlug>
 `00-Platform` stellt die gemeinsame technische Plattform bereit.  
 `10-Automation` enthält Collector-/Sanitization-/Normalisierungslogik.  
 `20-IaC` enthält getrennte Deployment-Produkte.  
+`30-IDD` enthält den Intune Configuration Lifecycle mit Default Deployment, künftigem Backup/Compare/Deployment und dem zugehörigen Techniker-Frontend.  
 `99-LAB` ist die Integrations-/E2E-Stufe vor realen Kunden.  
 `CUST-*` ist die kundenbezogene technische Boundary.
 
 `PlatformBootstrap` provisioniert `CUST-*` und die Onboarding-Voraussetzungen. Die finale Knowledge-Base-/Publishing-Architektur wird ausschließlich in `00-Platform / DocumentationEngine` entschieden und umgesetzt.
+
+Für `30-IDD` gilt als initialer Bootstrap-Vertrag ausschließlich:
+
+```text
+30-IDD
+└── IntuneDefaultDeployment
+```
+
+Weitere Repositories für IntuneCD/IntuneCD Monitor werden erst nach Festlegung ihres technischen Integrationsvertrags ergänzt und nicht vorab erfunden.
+
+Fachdokumentation:
+
+```text
+docs/Intune-Default-Deployment.md
+```
 
 ## 2. Kundenidentität und Customer Boundary
 
@@ -69,6 +88,8 @@ Firewall-<CustomerSlug>-<SiteSlug>
 ```
 
 Firewall-Repositories sind RAW-CONFIDENTIAL und bleiben bei Bootstrap-Erstellung vollständig leer. Kein README, keine `.gitignore`, kein Initial-Commit.
+
+Kundenspezifische IntuneCD-Snapshots gehören fachlich ebenfalls zur `CUST-*`-Boundary. Das konkrete Repository-Schema hierfür ist noch offen und wird erst mit dem IntuneCD-Monitor-/Customer-Onboarding-Contract beschlossen.
 
 ## 3. Dokumentationsplattform vs. IaC
 
@@ -100,6 +121,22 @@ Validate
 ```
 
 IaC verwendet eigene Deployment-Identitäten und Service Connections.
+
+### Intune Configuration Lifecycle
+
+`30-IDD` ist bewusst nicht Teil von `10-Automation`. IntuneCD ist fachlich nicht nur ein Read-only-Collector, sondern kann Backup, Compare und kontrollierte Updates abbilden; IntuneCD Monitor ist das vorgesehene Techniker-Frontend für diesen Lifecycle.
+
+Für die spätere DocumentationEngine-Integration gilt bereits als fachliche Leitplanke:
+
+```text
+30-IDD / freigegebener Default Deployment Stand
+→ Desired State
+
+IntuneCD-Backup aus realem Kunden-Tenant
+→ Actual State
+```
+
+Ein Git-Commit ist nicht automatisch Desired State. Actual und Desired werden nicht implizit vermischt; eine spätere Drift-/Reconciliation-Darstellung erhält einen expliziten Vertrag.
 
 ## 4. OPNsense-Datenfluss
 
@@ -136,11 +173,14 @@ Mapping:
 00-Platform   → 00-platform.png
 10-Automation → 10-automation.png
 20-IaC        → 20-iac.png
+30-IDD        → OPEN; freigegebenes 30-idd.png noch nicht versioniert
 99-LAB        → 99-lab.png
 CUST-*        → cust-generic.png
 ```
 
-Idempotenz-Marker:
+Für `30-IDD` wird bis zur Aufnahme des freigegebenen IDD-Assets bewusst **kein** fremdes/fallback Core-Icon gesetzt. Projekt- und Repository-Provisionierung sind davon getrennt.
+
+Idempotenz-Marker für Projekte mit freigegebenem Branding:
 
 ```text
 BSSE.PlatformBootstrap.ProjectAvatarSha256
@@ -148,10 +188,12 @@ BSSE.PlatformBootstrap.ProjectAvatarSha256
 
 Runtime bestätigt:
 
-- Avatar-PUT für alle vier Core-Projekte erfolgreich,
+- Avatar-PUT für die vier bisher gebrandeten Core-Projekte erfolgreich,
 - reale Azure-DevOps-Antwort HTTP 204 wird als Erfolg akzeptiert,
 - Project-Property-Marker erfolgreich geschrieben und gelesen,
-- Folge-Apply erkennt alle vier Core-Branding-Zustände als `EXISTS`.
+- Folge-Apply erkennt diese vier Core-Branding-Zustände als `EXISTS`.
+
+Für `30-IDD` ist das Branding noch nicht runtime-verifiziert und bleibt bis zum versionierten `30-idd.png` ausdrücklich `OPEN`.
 
 Bekannte Grenze: Externe manuelle Avatar-Änderungen können ohne dokumentierten Avatar-GET bei unverändertem Marker nicht zuverlässig erkannt werden.
 
@@ -496,6 +538,11 @@ automatisch bereinigt.
 
 - Zielarchitektur und Repository-Zuordnung,
 - Dokumentations-/IaC-Trennung,
+- `30-IDD` als eigener Core-Projektbereich für den Intune Configuration Lifecycle,
+- initiales Repository `30-IDD/IntuneDefaultDeployment`,
+- vollständiger Intune Configuration Lifecycle fachlich in `30-IDD` statt `10-Automation`,
+- freigegebener IDD-Stand ist Desired State; IntuneCD-Kundenbackup ist Actual State,
+- kundenspezifische Intune-Snapshots gehören fachlich zur `CUST-*`-Boundary,
 - CustomerNumber als stabile Kunden-ID,
 - OPNsense RAW pro Firewall in eigenem Repo,
 - lokaler First-Run / zentraler späterer Technikerweg,
@@ -513,8 +560,11 @@ automatisch bereinigt.
 ### Bereits implementiert
 
 - Core-/Customer-Bootstrap,
+- `30-IDD` im Core-Bootstrap mit initialem Repository-Vertrag `IntuneDefaultDeployment`,
+- kontrollierte Behandlung des noch fehlenden freigegebenen `30-IDD`-Brandingassets ohne Fallback-Icon,
+- Fachdokumentation `docs/Intune-Default-Deployment.md`,
 - CustomerConfiguration-Sync,
-- Branding inkl. Hash-Marker,
+- Branding inkl. Hash-Marker für Projekte mit freigegebenem Asset,
 - Self-Hosting-Initializer,
 - lokales Customer-Onboarding-Frontend,
 - produktive Customer-Onboarding-YAML,
@@ -532,8 +582,8 @@ automatisch bereinigt.
 
 ### Bereits runtime-verifiziert
 
-- Core-Projekte/-Repositories,
-- Core-Branding + Marker + Idempotenz,
+- die vor der `30-IDD`-Erweiterung verwalteten Core-Projekte/-Repositories,
+- Branding + Marker + Idempotenz der vier bisher gebrandeten Core-Projekte,
 - PlatformBootstrap Source Guard,
 - Entra App/SP-Erstellung,
 - Basic + Readers,
@@ -554,12 +604,24 @@ automatisch bereinigt.
   Probe-Merge-Kandidaten und abschließender `master`-Validierung erfolgreich
   nachgewiesen.
 
+`30-IDD` selbst ist mit dem neuen Bootstrap-Vertrag noch **nicht runtime-verifiziert**. Die vorhandene Azure-DevOps-Projektinstanz und deren tatsächlicher Repository-Istzustand werden nach Merge per Dry Run geprüft.
+
 ### Noch offen
 
+- `30-IDD` Core-Dry-Run gegen den realen Azure-DevOps-Istzustand,
+- erwartete `IntuneDefaultDeployment`-Umbenennung/-Erstellung nach Dry Run kontrolliert anwenden und verifizieren,
+- freigegebenes `30-idd.png` in PlatformBootstrap versionieren, Mapping/Test ergänzen und Branding anwenden/verifizieren,
+- IntuneCD-/IntuneCD-Monitor-Repositorystruktur,
+- Upstream-Versionierungs-/Fork-Strategie,
+- produktive IntuneCD-Monitor-Runtime/Hosting,
+- Azure-Repos-Authentifizierung für den Monitor,
+- getrennte Graph-Identitäten/Least-Privilege-Permissions für Backup vs. Deployment,
+- `CUST-*`-Intune-Repositoryvertrag und Customer-Onboarding-Integration,
+- Intune→DocumentationEngine-Inputcontract und Reconciliation-Contract,
 - Diagnoseobjekte des letzten UI-Probes vollständig bereinigen,
 - nur diagnostisch hinzugefügtes App-Registration-Ownership entfernen,
 - Branding-Regressionstest lokal ausführen,
-- Core-Icons visuell in Azure DevOps bestätigen,
+- bisherige Core-Icons visuell in Azure DevOps bestätigen,
 - `VS403283`-Retry in einem frischen Same-Process-Erstlauf runtime-verifizieren,
 - **BLOCKED:** produktive `sc-platform-bootstrap-azdo` fertigstellen,
 - produktives `fic-sc-platform-bootstrap-azdo`,
@@ -575,12 +637,14 @@ automatisch bereinigt.
 
 ## 16. Aktueller nächster Umsetzungsschritt
 
-1. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` / zugehöriges FIC bereinigen; nur das für den Test hinzugefügte App-Registration-Ownership entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
-2. GitHub-`main` in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
-3. Temporäre AzureRM-WIF-Bridge `sc-platform-bootstrap-azdo-arm-bridge` erzeugen.
-4. Passendes separates Bridge-FIC erzeugen und exakt verifizieren.
-5. `Customer-Onboarding-TEST-AzureRmWifBridge` registrieren und ausschließlich für diese Bridge-Service-Connection autorisieren.
-6. Validate-Stage starten und Azure-DevOps-Entra-Token der dedizierten Plattformidentität verifizieren.
-7. Customer-Onboarding-Dry-Run prüfen.
-8. Nach Review Apply + Verify für den E2E-Test ausführen.
-9. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung des produktiven `customer-onboarding.yml` auf die Bridge.
+1. Diese `30-IDD`-Erweiterung nach Review nach `main` mergen und GitHub-`main` in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
+2. `New-BSSEAzureDevOpsCore.ps1` zunächst ohne `-Apply` gegen `BSSE-CloudOps` ausführen und den realen `30-IDD`-Projekt-/Repository-Istzustand prüfen.
+3. Nur wenn der Dry Run ausschließlich den erwarteten sicheren `30-IDD`-Repository-Sollzustand plant, die Änderung bewusst mit `-Apply` ausführen und danach erneut ohne `-Apply` verifizieren. Das noch offene `30-IDD`-Branding bleibt davon getrennt.
+4. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` / zugehöriges FIC bereinigen; nur das für den Test hinzugefügte App-Registration-Ownership entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
+5. Temporäre AzureRM-WIF-Bridge `sc-platform-bootstrap-azdo-arm-bridge` erzeugen.
+6. Passendes separates Bridge-FIC erzeugen und exakt verifizieren.
+7. `Customer-Onboarding-TEST-AzureRmWifBridge` registrieren und ausschließlich für diese Bridge-Service-Connection autorisieren.
+8. Validate-Stage starten und Azure-DevOps-Entra-Token der dedizierten Plattformidentität verifizieren.
+9. Customer-Onboarding-Dry-Run prüfen.
+10. Nach Review Apply + Verify für den E2E-Test ausführen.
+11. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung des produktiven `customer-onboarding.yml` auf die Bridge.
