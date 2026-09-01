@@ -70,10 +70,23 @@ CUST-<CustomerNumber>-<CustomerSlug>
 
 ## Kunden-Repositories
 
+Basis:
+
 ```text
 CustomerConfiguration
 Documentation
+```
+
+Optional pro Firewall:
+
+```text
 Firewall-<CustomerSlug>-<FirewallSlug>
+```
+
+Optional pro produktiv verwaltetem Intune-Tenant:
+
+```text
+Intune-<TenantAlias>
 ```
 
 Beispiele:
@@ -81,9 +94,39 @@ Beispiele:
 ```text
 Firewall-Cannon-Deutschland-GmbH-HQ
 Firewall-Cannon-Deutschland-GmbH-Branch01
+Intune-Primary
+Intune-Legacy
 ```
 
-Ein möglicher späterer Intune-Repositoryvertrag innerhalb der `CUST-*`-Boundary ist noch **nicht beschlossen** und wird nicht vorab in diese Namenskonvention aufgenommen.
+### `Intune-<TenantAlias>`
+
+`TenantAlias` ist ein explizit beim ersten Intune-Onboarding vergebener, menschenlesbarer und innerhalb des jeweiligen `CUST-*`-Projekts eindeutiger technischer Alias.
+
+Verbindlich gilt:
+
+```text
+Customer Identity → CustomerNumber
+Tenant Identity   → Microsoft Entra Tenant ID
+Repository Name   → Intune-<TenantAlias>
+```
+
+Der Repositoryname ist nicht die Tenant-Identität. Domain, Anzeigename oder Aliasänderungen führen deshalb nicht automatisch zu einer Repository-Umbenennung.
+
+Ein Kunde kann 0..n Intune-Tenants besitzen:
+
+```text
+CUST-4711-Contoso
+├── CustomerConfiguration
+├── Documentation
+├── Intune-Primary
+└── Intune-Legacy
+```
+
+Die Zuordnung `Tenant ID ↔ TenantAlias ↔ Repository` wird in `CustomerConfiguration` geführt. Details und Lifecycle-Regeln:
+
+```text
+docs/Customer-Intune-Tenant-Repository.md
+```
 
 ## Service Connections
 
