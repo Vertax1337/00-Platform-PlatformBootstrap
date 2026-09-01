@@ -35,7 +35,8 @@
 CUST-<CustomerNumber>-<CustomerSlug>
 ├── CustomerConfiguration
 ├── Documentation
-└── Firewall-<CustomerSlug>-<SiteSlug>   # 0..n
+├── Firewall-<CustomerSlug>-<SiteSlug>   # 0..n
+└── Intune-<TenantAlias>                 # 0..n
 ```
 
 ### Verantwortungsgrenzen
@@ -63,6 +64,7 @@ Fachdokumentation:
 ```text
 docs/Intune-Default-Deployment.md
 docs/Intune-Cross-Project-Contract.md
+docs/Customer-Intune-Tenant-Repository.md
 ```
 
 ## 2. Kundenidentität und Customer Boundary
@@ -90,7 +92,25 @@ Firewall-<CustomerSlug>-<SiteSlug>
 
 Firewall-Repositories sind RAW-CONFIDENTIAL und bleiben bei Bootstrap-Erstellung vollständig leer. Kein README, keine `.gitignore`, kein Initial-Commit.
 
-Kundenspezifische IntuneCD-Snapshots gehören fachlich ebenfalls zur `CUST-*`-Boundary. **Beschlossen:** Ein produktiv verwalteter Intune-Tenant erhält dort einen eigenen versionierten Repositorybereich bzw. ein eigenes Repository für den Intune-Iststand. Der exakte Repositoryname bleibt noch offen. Die stabile Zuordnung erfolgt über `CustomerNumber` und Microsoft Entra Tenant ID und nicht über den Repositorynamen.
+Optional pro produktiv verwaltetem Intune-Tenant:
+
+```text
+Intune-<TenantAlias>
+```
+
+Der `TenantAlias` ist ein explizit beim ersten Intune-Onboarding vergebener, menschenlesbarer und innerhalb des Kundenprojekts eindeutiger technischer Locator. Er ist nicht die Tenant-Identität.
+
+Verbindliche stabile Zuordnung:
+
+```text
+Customer Identity → CustomerNumber
+Intune Tenant      → Microsoft Entra Tenant ID
+Repository Locator → Intune-<TenantAlias>
+```
+
+Die Zuordnung `Tenant ID ↔ TenantAlias ↔ Repository` wird kanonisch in `CustomerConfiguration` geführt. Ein Kunde kann 0..n Intune-Tenants besitzen. Domain-, Anzeigename- oder Aliasänderungen lösen keine automatische Repository-Umbenennung aus.
+
+Customer-Intune-Repositories sind `RAW-CONFIDENTIAL`, Zweck `intunecd-snapshot`, Perspektive `actual`. Sie werden nicht direkt veröffentlicht oder als Desired State interpretiert.
 
 ## 3. Dokumentationsplattform vs. IaC
 
@@ -133,7 +153,7 @@ Für die DocumentationEngine-Integration gilt verbindlich:
 30-IDD / freigegebener Default Deployment Stand
 → Desired State / desiredDeployment
 
-IntuneCD-Backup aus realem Kunden-Tenant
+CUST-* / Intune-<TenantAlias>
 → Actual State / actual
 ```
 
@@ -141,7 +161,7 @@ Ein Git-Commit ist nicht automatisch Desired State. Actual und Desired werden ni
 
 Zwischen IntuneCD/Monitor, Customer-Repository und DocumentationEngine wird ein versionierter **BSSE Intune Snapshot-/Provenance-Contract** eingeführt. Er kapselt die native IntuneCD-Ausgabe und transportiert mindestens Customer-/Tenant-Identität, Perspektive, Snapshot-/Tool-/Commit-Provenance, Artefaktreferenzen/-integrität, Coverage sowie Validation-/Security-Status. Die konkrete Serialisierung und Schema-Technologie bleiben offen.
 
-Die kanonische projektübergreifende Ownership-Grenze ist in `docs/Intune-Cross-Project-Contract.md` festgelegt. Die DocumentationEngine führt ihren Consumer-/Adaptervertrag separat und dupliziert nicht den vollständigen Plattformvertrag.
+Die kanonische projektübergreifende Ownership-Grenze ist in `docs/Intune-Cross-Project-Contract.md` festgelegt. Der Customer-seitige Repository-/Identity-/Lifecycle-Vertrag ist in `docs/Customer-Intune-Tenant-Repository.md` konkretisiert. Die DocumentationEngine führt ihren Consumer-/Adaptervertrag separat und dupliziert nicht den vollständigen Plattformvertrag.
 
 ## 4. OPNsense-Datenfluss
 
@@ -360,6 +380,8 @@ azureDevOpsServiceConnection: sc-platform-bootstrap-azdo
 
 Dieser Weg bleibt bis zur WIF-Klärung auth-seitig BLOCKED.
 
+Der fachliche Customer-Intune-Onboardingvertrag ist bereits beschlossen, aber noch nicht in Backend/Frontend/Pipeline implementiert. Zukünftig muss ein explizit aktivierter Intune-Tenant mindestens über `CustomerNumber + Tenant ID + TenantAlias` fail-closed dem Repository `Intune-<TenantAlias>` und dem `CustomerConfiguration`-Mapping zugeordnet werden.
+
 ## 10. Temporärer Azure-DevOps-E2E-Testpfad
 
 ### Bevorzugt: AzureRM-WIF-Bridge
@@ -455,6 +477,8 @@ Eigenschaften:
 - Git-Historie statt blindem Write,
 - OAuth-/Entra-/System.AccessToken wird nicht in Remote-URLs persistiert.
 
+Für Intune ist fachlich beschlossen, dass `CustomerConfiguration` zukünftig die kanonische Zuordnung `Tenant ID ↔ TenantAlias ↔ Intune-<TenantAlias>` führt. Die bestehende Sync-Implementierung unterstützt additive Änderungen innerhalb einer bereits existierenden `customer.yml` noch nicht; diese technische Migrations-/Update-Mechanik ist deshalb ausdrücklich OFFEN und darf nicht durch blindes Überschreiben ersetzt werden.
+
 ## 13. Pipeline-Registrierung und Readiness
 
 Produktive Registrierung:
@@ -547,9 +571,16 @@ automatisch bereinigt.
 - `30-IDD` als eigener Core-Projektbereich für den Intune Configuration Lifecycle,
 - initiales Repository `30-IDD/IntuneDefaultDeployment`,
 - vollständiger Intune Configuration Lifecycle fachlich in `30-IDD` statt `10-Automation`,
-- freigegebener IDD-Stand ist Desired State / `desiredDeployment`; IntuneCD-Kundenbackup ist Actual State / `actual`,
+- freigegebener IDD-Stand ist Desired State / `desiredDeployment`; Customer-Intune-Repository ist Actual State / `actual`,
 - kundenspezifische Intune-Snapshots gehören fachlich zur `CUST-*`-Boundary,
-- ein produktiv verwalteter Intune-Tenant erhält dort einen eigenen versionierten Repositorybereich; der exakte Repositoryname bleibt offen,
+- ein produktiv verwalteter Intune-Tenant erhält dort ein eigenes Repository `Intune-<TenantAlias>`,
+- `TenantAlias` ist ein expliziter menschenlesbarer Locator; Microsoft Entra Tenant ID bleibt die stabile Tenant-Identität,
+- `CustomerConfiguration` hält die kanonische Zuordnung `Tenant ID ↔ TenantAlias ↔ Repository`,
+- Customer-Intune-Repositories sind `RAW-CONFIDENTIAL`, Zweck `intunecd-snapshot`, Perspektive `actual`,
+- 0..n Intune-Tenants pro Kunde,
+- keine automatische Customer-Intune-Repository-Umbenennung bei Domain-/DisplayName-/Aliasänderung,
+- kein automatisches Löschen historischer Intune-Repositories beim Deaktivieren,
+- Fail Closed bei Tenant-ID-/Alias-/Repository-Mapping-Konflikten,
 - CustomerNumber und Microsoft Entra Tenant ID sind die stabilen Customer-/Tenant-Zuordnungsidentitäten,
 - versionierter BSSE Intune Snapshot-/Provenance-Contract zwischen IntuneCD/Monitor, Customer-Repository und DocumentationEngine,
 - native IntuneCD-Dokumentation und Compare sind provider-spezifische Hilfen und ersetzen weder DVM noch providerunabhängige Reconciliation,
@@ -575,6 +606,7 @@ automatisch bereinigt.
 - `30-IDD` verwendet denselben fail-closed Brandingpfad wie die übrigen Core-Projekte,
 - Fachdokumentation `docs/Intune-Default-Deployment.md`,
 - Cross-Project-Contract `docs/Intune-Cross-Project-Contract.md`,
+- Customer-Intune-Repository-Fachcontract `docs/Customer-Intune-Tenant-Repository.md`,
 - CustomerConfiguration-Sync,
 - Branding inkl. Hash-Marker für verwaltete Projekttypen,
 - Self-Hosting-Initializer,
@@ -591,6 +623,8 @@ automatisch bereinigt.
 - temporäre System.AccessToken-E2E-Testpipeline,
 - temporäre AzureRM-WIF-Bridge-Testpipeline,
 - Fachdokumentation für den AzureRM-WIF-Bridge-Test.
+
+Wichtig: Die **fachliche** Customer-Intune-Repositoryentscheidung ist dokumentiert, die technische Provisionierungs-/Onboarding-Implementierung dafür aber noch nicht vorhanden.
 
 ### Bereits runtime-verifiziert
 
@@ -624,13 +658,16 @@ automatisch bereinigt.
 - erwartete `IntuneDefaultDeployment`-Umbenennung/-Erstellung nach Dry Run kontrolliert anwenden und verifizieren,
 - `30-IDD`-Branding per Dry Run/Apply/Marker-Readback/idempotentem Folge-Dry-Run verifizieren,
 - tatsächliche Anzeige des `30-IDD`-Icons in Azure DevOps bestätigen,
+- technische Customer-Onboarding-/Provisionierungsimplementierung für `Intune-<TenantAlias>`,
+- additive CustomerConfiguration-Migrations-/Update-Mechanik für bestehende Kunden,
+- technische Parameter-/Validierungsoberfläche für 0..n Intune-Tenants,
+- Initial-Branch-/Seed-Regel des Customer-Intune-Repositories,
+- Repository-Berechtigungs-/Retention-Vertrag für Customer-Intune-Repositories,
 - IntuneCD-/IntuneCD-Monitor-Repositorystruktur,
 - Upstream-Versionierungs-/Fork-Strategie,
 - produktive IntuneCD-Monitor-Runtime/Hosting,
 - Azure-Repos-Authentifizierung für den Monitor,
 - getrennte Graph-Identitäten/Least-Privilege-Permissions für Backup vs. Deployment,
-- exakte Benennung des `CUST-*`-Intune-Tenant-Repositories,
-- Customer-Onboarding-Integration für aktiviertes Intune Management,
 - technische Serialisierung/Schema-Technologie des BSSE Intune Snapshot Contracts,
 - DocumentationEngine Intune Source Adapter,
 - produktiver Actual/Desired-Reconciliation-Contract,
@@ -656,11 +693,12 @@ automatisch bereinigt.
 1. GitHub-`main` mit der abgeschlossenen `30-IDD`-Code-/Dokumentationsänderung in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
 2. `New-BSSEAzureDevOpsCore.ps1` zunächst ohne `-Apply` gegen `BSSE-CloudOps` ausführen und den realen `30-IDD`-Projekt-/Repository-/Branding-Istzustand prüfen.
 3. Nur wenn der Dry Run ausschließlich den erwarteten sicheren `30-IDD`-Repository- und Branding-Sollzustand plant, die Änderung bewusst mit `-Apply` ausführen und danach erneut ohne `-Apply` verifizieren.
-4. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` / zugehöriges FIC bereinigen; nur das für den Test hinzugefügte App-Registration-Ownership entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
-5. Temporäre AzureRM-WIF-Bridge `sc-platform-bootstrap-azdo-arm-bridge` erzeugen.
-6. Passendes separates Bridge-FIC erzeugen und exakt verifizieren.
-7. `Customer-Onboarding-TEST-AzureRmWifBridge` registrieren und ausschließlich für diese Bridge-Service-Connection autorisieren.
-8. Validate-Stage starten und Azure-DevOps-Entra-Token der dedizierten Plattformidentität verifizieren.
-9. Customer-Onboarding-Dry-Run prüfen.
-10. Nach Review Apply + Verify für den E2E-Test ausführen.
-11. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung des produktiven `customer-onboarding.yml` auf die Bridge.
+4. Danach den technischen Customer-Intune-Onboarding-Workchunk umsetzen: `Intune-<TenantAlias>` idempotent provisionieren, 0..n Tenant-Definitionen validieren und `CustomerConfiguration` kontrolliert/additiv um die Tenant-ID-/Alias-/Repository-Zuordnung erweitern. Keine Monitor-Registrierung in diesem Workchunk.
+5. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` / zugehöriges FIC bereinigen; nur das für den Test hinzugefügte App-Registration-Ownership entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
+6. Temporäre AzureRM-WIF-Bridge `sc-platform-bootstrap-azdo-arm-bridge` erzeugen.
+7. Passendes separates Bridge-FIC erzeugen und exakt verifizieren.
+8. `Customer-Onboarding-TEST-AzureRmWifBridge` registrieren und ausschließlich für diese Bridge-Service-Connection autorisieren.
+9. Validate-Stage starten und Azure-DevOps-Entra-Token der dedizierten Plattformidentität verifizieren.
+10. Customer-Onboarding-Dry-Run prüfen.
+11. Nach Review Apply + Verify für den E2E-Test ausführen.
+12. Produktive WIF-Implementierung bleibt parallel BLOCKED/offen; keine automatische Umstellung des produktiven `customer-onboarding.yml` auf die Bridge.
