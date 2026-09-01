@@ -98,15 +98,17 @@ for ($i = 0; $i -lt $pngSignature.Length; $i++) {
 }
 
 $gitHeader = [System.Text.Encoding]::ASCII.GetBytes("blob $($iddBytes.Length)`0")
-$gitObject = New-Object byte[] ($gitHeader.Length + $iddBytes.Length)
-[System.Array]::Copy($gitHeader, 0, $gitObject, 0, $gitHeader.Length)
-[System.Array]::Copy($iddBytes, 0, $gitObject, $gitHeader.Length, $iddBytes.Length)
+$gitStream = [System.IO.MemoryStream]::new()
 $sha1 = [System.Security.Cryptography.SHA1]::Create()
 try {
-    $iddGitBlobSha = ([System.BitConverter]::ToString($sha1.ComputeHash($gitObject))).Replace('-', '').ToLowerInvariant()
+    $gitStream.Write($gitHeader, 0, $gitHeader.Length)
+    $gitStream.Write($iddBytes, 0, $iddBytes.Length)
+    $gitStream.Position = 0
+    $iddGitBlobSha = ([System.BitConverter]::ToString($sha1.ComputeHash($gitStream))).Replace('-', '').ToLowerInvariant()
 }
 finally {
     $sha1.Dispose()
+    $gitStream.Dispose()
 }
 
 if ($iddGitBlobSha -ne '8cbe66d5b92b864ddc136adb7e643e4e8055b824') {
