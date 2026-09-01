@@ -5,6 +5,7 @@
 - `00-Platform`
 - `10-Automation`
 - `20-IaC`
+- `30-IDD`
 - `99-LAB`
 
 ## `00-Platform` Repositories
@@ -41,7 +42,23 @@ AzureInfrastructureCollector
 OPNsenseDocumentation
 ```
 
-Aus dieser Festlegung für `10-Automation` wird derzeit **keine globale `<Projektname>-<Repositoryname>`-Umbenennung** für Repositories anderer Azure-DevOps-Projekte abgeleitet. Insbesondere bleiben die bestehenden Namen unter `00-Platform`, `20-IaC` und `99-LAB` unverändert, solange hierzu keine eigene Entscheidung getroffen wurde.
+## `30-IDD` Repositories
+
+Initialer verbindlicher Bootstrap-Vertrag:
+
+```text
+IntuneDefaultDeployment
+```
+
+`30-IDD` ist der zentrale Projektbereich für Intune Default Deployment und den Intune-Konfigurationslebenszyklus. Weitere Repositories für IntuneCD, IntuneCD Monitor oder gemeinsame Intune-Komponenten werden erst nach Abschluss des entsprechenden Integrationsvertrags benannt und provisioniert.
+
+Details:
+
+```text
+docs/Intune-Default-Deployment.md
+```
+
+Aus der Festlegung für `10-Automation` wird derzeit **keine globale `<Projektname>-<Repositoryname>`-Umbenennung** für Repositories anderer Azure-DevOps-Projekte abgeleitet. Insbesondere bleiben die bestehenden Namen unter `00-Platform`, `20-IaC`, `30-IDD` und `99-LAB` unverändert, solange hierzu keine eigene Entscheidung getroffen wurde.
 
 ## Kunde
 
@@ -63,6 +80,8 @@ Beispiele:
 Firewall-Cannon-Deutschland-GmbH-HQ
 Firewall-Cannon-Deutschland-GmbH-Branch01
 ```
+
+Ein möglicher späterer Intune-Repositoryvertrag innerhalb der `CUST-*`-Boundary ist noch **nicht beschlossen** und wird nicht vorab in diese Namenskonvention aufgenommen.
 
 ## Service Connections
 
