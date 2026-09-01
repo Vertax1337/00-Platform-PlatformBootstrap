@@ -2,6 +2,13 @@
 
 ## v1.9 Candidate (`main`)
 
+- `30-IDD` als fünften Core-Projektbereich für den Intune Configuration Lifecycle in die Zielarchitektur aufgenommen
+- initialer Bootstrap-Vertrag für `30-IDD/IntuneDefaultDeployment` ergänzt; ein vorhandenes initiales Projekt-Repository `30-IDD` wird im normalen PLAN/APPLY-Vertrag kontrolliert zur Umbenennung erkannt
+- IntuneCD + IntuneCD Monitor fachlich `30-IDD` statt `10-Automation` zugeordnet; kundenspezifische Intune-Snapshots bleiben in der `CUST-*`-Boundary
+- Actual/Desired-Leitplanke für Intune festgelegt: IntuneCD-Kundenbackup = Actual State, freigegebener IDD-Stand = Desired State; keine implizite Vermischung
+- neue Fachdokumentation `docs/Intune-Default-Deployment.md` mit Upstream-Bewertung, offenen Auth-/Hosting-/Versionierungsfragen und DocumentationEngine-Schnittstelle
+- `30-IDD`-Branding bewusst als `OPEN` behandelt, solange kein freigegebenes `assets/project-icons/30-idd.png` versioniert ist; kein Fallback auf ein fremdes Core-Icon
+- kanonischen `docs/Umsetzungsplan.md`, README und Namenskonventionen auf dieselbe `30-IDD`-Architekturgrenze synchronisiert
 - zentrale, wiederverwendbare Repository-Policy-Reconciliation für geschützte Azure-Repos-Branches ergänzt
 - erster versionierter Policyvertrag für `20-IaC/Vaultwarden/refs/heads/master` mit exakt Kommentarauflösung und blockierender automatischer `Vaultwarden-CI`-Build-Validation; kein verpflichtendes Human Review
 - die durch den verworfenen Drei-Policy-Zwischenstand erzeugte Minimum-Reviewer-Policy wird nur bei exakter Signatur als verwaltete Drift entfernt; fremde Reviewer-Policies werden nicht gelöscht
@@ -78,7 +85,7 @@
 - `customer-onboarding.yml` prüft und persistiert Customer Boundary + CustomerConfiguration
 - Pipeline setzt `hasChanges` als Output; Approval/Apply werden ohne geplante Änderung übersprungen
 - Post-Apply-Verify prüft beide Bereiche auf verbleibende PLAN/CREATE/RENAME/BLOCKED-Zustände
-- neues idempotentes `Register-BSSECustomerOnboardingPipeline.ps1`; erster Run wird bei Registrierung bewusst übersprungen
+- neues idempotentes `Register-BSSECustomerOnboardingPipeline.ps1`; erster Run wird bei Registrierung bewusst nicht ausgelöst
 - neues nicht-mutierendes `Test-BSSECustomerOnboardingReadiness.ps1`
 - neues `docs/Customer-Onboarding-Setup.md` für WIF-Service-Connection und Least-Privilege-Plattformsetup
 - Zielberechtigung der PlatformBootstrap-Identität: keine pauschale Project-Collection-Administrator-Mitgliedschaft; collection-level `Create new projects = Allow` plus erforderlicher Projektzugriff
