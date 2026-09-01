@@ -1,6 +1,6 @@
 # 30-IDD – Intune Default Deployment und Configuration Lifecycle
 
-> **Status:** Architekturgrenze BESCHLOSSEN; Core-Bootstrap-Integration und `30-IDD`-Branding code-seitig IMPLEMENTIERT; Azure-DevOps-Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Integration noch offen.  
+> **Status:** Architekturgrenze und Cross-Project-Boundary BESCHLOSSEN; Core-Bootstrap-Integration und `30-IDD`-Branding code-seitig IMPLEMENTIERT; Azure-DevOps-Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Runtime noch offen.  
 > **Stand:** 2026-09-01
 
 ## 1. Zweck und Verantwortungsgrenze
@@ -21,6 +21,8 @@ Die Einordnung unter `30-IDD` ist bewusst von `10-Automation` getrennt:
 ```
 
 IntuneCD wird damit nicht lediglich als weiterer Collector betrachtet. Das Werkzeug kann Konfigurationen aus Intune sichern, lokale bzw. versionierte Konfigurationen vergleichen und Konfigurationen wieder in einen Tenant übertragen. Zusammen mit IntuneCD Monitor entsteht deshalb ein eigener fachlicher Configuration-Lifecycle-Bereich.
+
+Der projektübergreifende Ownership-/Boundary-Vertrag ist in [`Intune-Cross-Project-Contract.md`](Intune-Cross-Project-Contract.md) kanonisch festgelegt. Dieses Dokument hält nur die `30-IDD`-fachliche Sicht und dupliziert den vollständigen Cross-Project-Contract nicht.
 
 ## 2. Initialer Bootstrap-Vertrag
 
@@ -58,21 +60,23 @@ Die fachliche Zielrichtung ist:
           └──────────── actual ─────────────┘
 ```
 
-Der genaue technische Contract zwischen `30-IDD`, `CUST-*` und `00-Platform/DocumentationEngine` ist noch offen und wird separat festgelegt.
+Der fachliche Cross-Project-Contract ist beschlossen. Technisch offen bleiben insbesondere Snapshot-Schema, Repositorybenennung, Monitor-Runtime/-Identity und Adapterimplementierung.
 
 ## 4. Actual State und Desired State
 
-Für die spätere DocumentationEngine-Integration gilt bereits als fachliche Leitplanke:
+Für die spätere DocumentationEngine-Integration gilt verbindlich:
 
 ```text
 freigegebener 30-IDD-Stand
-→ Desired State
+→ Desired State / desiredDeployment
 
 IntuneCD-Backup aus einem realen Kunden-Tenant
-→ Actual State
+→ Actual State / actual
 ```
 
 Ein Git-Commit ist nicht automatisch Desired State. Entscheidend ist die Rolle des Artefakts im freigegebenen Workflow.
+
+Der operative `baseline`-Status von IntuneCD Monitor ist kein Ersatz für die kanonische Desired-State-Quelle.
 
 Actual und Desired dürfen nicht stillschweigend zusammengeführt werden. Eine spätere Abweichungs-/Drift-Darstellung erfolgt über einen expliziten Reconciliation-Vertrag.
 
@@ -80,18 +84,32 @@ Actual und Desired dürfen nicht stillschweigend zusammengeführt werden. Eine s
 
 Kundenspezifische Intune-Snapshots gehören fachlich zur bestehenden `CUST-*`-Boundary und nicht als Sammeldatenbestand in das zentrale `30-IDD`-Projekt.
 
-Das konkrete Repository-Schema ist noch offen. Eine naheliegende, aber noch **nicht beschlossene** Variante ist ein separates Repository pro verwaltetem Intune-Tenant, zum Beispiel:
+**Beschlossen:** Ein produktiv verwalteter Intune-Tenant erhält innerhalb der zugehörigen `CUST-*`-Boundary einen eigenen versionierten Repositorybereich bzw. ein eigenes Repository für den Intune-Iststand.
+
+Beispielhaft, noch ohne festgelegten Repositorynamen:
 
 ```text
 CUST-4711-Contoso
 ├── CustomerConfiguration
 ├── Documentation
-└── Intune-contoso.onmicrosoft.com
+└── <Intune-Tenant-Repository>
 ```
 
-Diese Entscheidung wird erst zusammen mit dem IntuneCD-Monitor- und Customer-Onboarding-Contract finalisiert.
+Der exakte Repositoryname ist noch **OFFEN**. Die stabile technische Tenant-Zuordnung erfolgt über die Microsoft Entra Tenant ID und nicht über den Repositorynamen. Die Customer-Zuordnung erfolgt über die bestehende `CustomerNumber`.
 
-## 6. Verifizierte Upstream-Eigenschaften
+Mehrere Intune-Tenants pro Kunde bleiben damit möglich.
+
+## 6. BSSE Intune Snapshot Contract
+
+Zwischen IntuneCD/Monitor, Customer-Repository und DocumentationEngine wird ein versionierter Snapshot-/Provenance-Contract eingeführt.
+
+Der Contract kapselt die native IntuneCD-Ausgabe und muss mindestens Customer-/Tenant-Identität, Snapshot-/Perspektivinformation, Tool-/Commit-Provenance, Artefaktreferenzen/-integrität, Coverage sowie Validation-/Security-Status transportieren können.
+
+Die konkrete JSON-/YAML-Repräsentation, Dateibenennung und Schema-Technologie bleiben technisch offen.
+
+Details: [`Intune-Cross-Project-Contract.md`](Intune-Cross-Project-Contract.md).
+
+## 7. Verifizierte Upstream-Eigenschaften
 
 Die Bewertung vom 2026-09-01 basiert auf den Upstream-Repositories:
 
@@ -118,28 +136,28 @@ Der Upstream-Code klont das einem Tenant zugeordnete Git-Repository, führt `Int
 
 Der am 2026-09-01 geprüfte Upstream-Stand unterstützt eine breite Anzahl von Intune- und Entra-Konfigurationsbereichen. IntuneCD v2.6.0 enthält zusätzlich einen Offline-Compare-Befehl, der zwei Backup-Verzeichnisse ohne Microsoft-Graph-Aufrufe vergleichen und ein strukturiertes `compare_summary.json` sowie optional HTML erzeugen kann.
 
-## 7. Noch zu klärende technische Punkte
+## 8. Noch zu klärende technische Punkte
 
-### 7.1 IntuneCD-/Monitor-Versionierung
+### 8.1 IntuneCD-/Monitor-Versionierung
 
 Beim geprüften Stand ist IntuneCD Monitor v2.1.4 auf `IntuneCD==2.4.1` gepinnt, während IntuneCD selbst bereits v2.6.0 veröffentlicht hat.
 
 Vor einer produktiven Übernahme ist deshalb ein eigener getesteter Compatibility Contract erforderlich. `latest` darf nicht ungeprüft als produktiver Sollzustand verwendet werden.
 
-### 7.2 Upstream-Fork / Ownership
+### 8.2 Upstream-Fork / Ownership
 
 Aktuelle Arbeitsannahme, noch nicht beschlossen:
 
 - IntuneCD möglichst als gepinnte Upstream-Abhängigkeit verwenden,
 - IntuneCD Monitor nur dort forken/anpassen, wo CloudOps-Integration, Authentifizierung, Deployment oder UI-Erweiterungen dies tatsächlich erfordern.
 
-### 7.3 Git-/Azure-DevOps-Authentifizierung
+### 8.3 Git-/Azure-DevOps-Authentifizierung
 
 Der geprüfte Monitor-Upstream speichert Repository-PATs im Azure Key Vault und baut daraus authentifizierte Git-URLs.
 
 Für CloudOps ist noch zu entscheiden, wie die produktive Azure-Repos-Authentifizierung umgesetzt wird. Ziel ist eine secretarme/secretless Identität, soweit Azure DevOps und die ausgewählte Runtime dies belastbar unterstützen. Es wird **nicht** ungeprüft ein PAT-pro-Kunde-Modell zum Plattformstandard erklärt.
 
-### 7.4 Microsoft-Graph-Identitäten
+### 8.4 Microsoft-Graph-Identitäten
 
 Noch offen ist die genaue Trennung der Identitäten und Graph Application Permissions.
 
@@ -155,18 +173,20 @@ Deployment / Restore / Update
 
 Die exakten Permissions werden erst aus den tatsächlich aktivierten IntuneCD-Modulen abgeleitet. Überprivilegierte pauschale Rechte werden nicht vorab als Sollzustand festgeschrieben.
 
-### 7.5 Hosting des Monitors
+### 8.5 Hosting des Monitors
 
 Der Upstream-Monitor bringt eine Azure-/Container-basierte Deploymentvariante mit. Die konkrete CloudOps-Zielruntime ist noch offen und wird vor Implementierung gegen aktuelle Azure-Dienste, Wartbarkeit, Kosten, Security und Identity-Anforderungen bewertet.
 
-## 8. DocumentationEngine-Integration
+## 9. DocumentationEngine-Integration
 
-Die native IntuneCD-Dokumentation bleibt als mögliche Spezial-/Technikeransicht nützlich, ist aber nicht automatisch die zentrale BSSE-Kundendokumentation.
+Die native IntuneCD-Dokumentation bleibt als mögliche Spezial-/Technikeransicht nützlich, ist aber nicht die zentrale BSSE-Kundendokumentation.
 
 Zielrichtung:
 
 ```text
 IntuneCD Backup / Assignment / Compare Artifacts
+                    ↓
+       BSSE Snapshot / Provenance Contract
                     ↓
             Intune Source Adapter
                     ↓
@@ -179,9 +199,11 @@ IntuneCD Backup / Assignment / Compare Artifacts
         Markdown / DOCX / PDF / Diagramme
 ```
 
-Der Intune-Adapter und sein Input-Contract werden im DocumentationEngine-Projekt spezifiziert. Dabei werden stabile technische IDs und belegte Assignments/Relationships bevorzugt; Namensähnlichkeit darf keine Beziehung erzeugen.
+Der Intune-Adapter und sein Consumer-Contract werden im DocumentationEngine-Projekt unter `docs/INTUNECD_INTERFACE.md` geführt. Stabile technische IDs und belegte Assignments/Relationships sind verbindlich; Namensähnlichkeit darf keine Beziehung erzeugen.
 
-## 9. Branding
+Die native IntuneCD-Dokumentation wird nicht als Canonical Source of Truth geparst. IntuneCD Compare darf als provider-spezifische Evidence-/Vergleichshilfe genutzt werden, ersetzt jedoch nicht den providerunabhängigen Reconciliation-Contract.
+
+## 10. Branding
 
 Das vom Projektverantwortlichen eingebrachte Asset ist jetzt versioniert:
 
@@ -210,7 +232,7 @@ Damit gilt code-seitig:
 → OFFEN
 ```
 
-## 10. Status
+## 11. Status
 
 ### Bereits beschlossen
 
@@ -218,7 +240,11 @@ Damit gilt code-seitig:
 - Der vollständige Intune Configuration Lifecycle gehört fachlich nach `30-IDD`, nicht nach `10-Automation`.
 - Initiales Repository: `IntuneDefaultDeployment`.
 - Kundenspezifische Intune-Snapshots gehören fachlich zur `CUST-*`-Boundary.
+- Ein produktiv verwalteter Intune-Tenant erhält einen eigenen versionierten Customer-Repositorybereich; der exakte Repo-Name bleibt offen.
+- CustomerNumber und Entra Tenant ID sind die stabilen Zuordnungsidentitäten.
 - Intune Actual State und freigegebener IDD Desired State werden getrennt behandelt.
+- Der BSSE Intune Snapshot-/Provenance-Contract ist als Cross-Project-Grenze beschlossen.
+- Native IntuneCD-Dokumentation und Compare ersetzen weder DVM noch providerunabhängige Reconciliation.
 
 ### Bereits implementiert
 
@@ -226,6 +252,7 @@ Damit gilt code-seitig:
 - `IntuneDefaultDeployment` ist als initialer Repository-Sollzustand im Core-Bootstrap hinterlegt.
 - `assets/project-icons/30-idd.png` ist als eigenes Core-Brandingasset versioniert und im zentralen Mapping aktiviert.
 - Regressionstests decken den minimalen `30-IDD`-Core-Vertrag sowie Mapping, PNG-Integrität, Dateigröße und die festgeschriebene Git-Blob-Identität des neuen Assets ab.
+- Cross-Project-Contract ist unter `docs/Intune-Cross-Project-Contract.md` versioniert.
 
 ### Noch offen
 
@@ -235,9 +262,10 @@ Damit gilt code-seitig:
 - produktive Runtime/Hosting,
 - Azure-Repos-Authentifizierung,
 - Graph-Identitäten und Least-Privilege-Permissions,
-- `CUST-*`-Intune-Repositoryvertrag,
+- exakte `CUST-*`-Intune-Repositorybenennung,
 - Customer-Onboarding-Integration,
-- Intune→DocumentationEngine-Contract,
+- technisches Snapshot-Schema,
+- DocumentationEngine Intune-Adapterimplementierung,
 - produktiver Actual/Desired-Reconciliation-Contract.
 
 ### Runtime-Verifikation ausstehend
