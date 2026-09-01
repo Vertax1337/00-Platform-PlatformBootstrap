@@ -62,6 +62,7 @@ Fachdokumentation:
 
 ```text
 docs/Intune-Default-Deployment.md
+docs/Intune-Cross-Project-Contract.md
 ```
 
 ## 2. Kundenidentität und Customer Boundary
@@ -89,7 +90,7 @@ Firewall-<CustomerSlug>-<SiteSlug>
 
 Firewall-Repositories sind RAW-CONFIDENTIAL und bleiben bei Bootstrap-Erstellung vollständig leer. Kein README, keine `.gitignore`, kein Initial-Commit.
 
-Kundenspezifische IntuneCD-Snapshots gehören fachlich ebenfalls zur `CUST-*`-Boundary. Das konkrete Repository-Schema hierfür ist noch offen und wird erst mit dem IntuneCD-Monitor-/Customer-Onboarding-Contract beschlossen.
+Kundenspezifische IntuneCD-Snapshots gehören fachlich ebenfalls zur `CUST-*`-Boundary. **Beschlossen:** Ein produktiv verwalteter Intune-Tenant erhält dort einen eigenen versionierten Repositorybereich bzw. ein eigenes Repository für den Intune-Iststand. Der exakte Repositoryname bleibt noch offen. Die stabile Zuordnung erfolgt über `CustomerNumber` und Microsoft Entra Tenant ID und nicht über den Repositorynamen.
 
 ## 3. Dokumentationsplattform vs. IaC
 
@@ -126,17 +127,21 @@ IaC verwendet eigene Deployment-Identitäten und Service Connections.
 
 `30-IDD` ist bewusst nicht Teil von `10-Automation`. IntuneCD ist fachlich nicht nur ein Read-only-Collector, sondern kann Backup, Compare und kontrollierte Updates abbilden; IntuneCD Monitor ist das vorgesehene Techniker-Frontend für diesen Lifecycle.
 
-Für die spätere DocumentationEngine-Integration gilt bereits als fachliche Leitplanke:
+Für die DocumentationEngine-Integration gilt verbindlich:
 
 ```text
 30-IDD / freigegebener Default Deployment Stand
-→ Desired State
+→ Desired State / desiredDeployment
 
 IntuneCD-Backup aus realem Kunden-Tenant
-→ Actual State
+→ Actual State / actual
 ```
 
 Ein Git-Commit ist nicht automatisch Desired State. Actual und Desired werden nicht implizit vermischt; eine spätere Drift-/Reconciliation-Darstellung erhält einen expliziten Vertrag.
+
+Zwischen IntuneCD/Monitor, Customer-Repository und DocumentationEngine wird ein versionierter **BSSE Intune Snapshot-/Provenance-Contract** eingeführt. Er kapselt die native IntuneCD-Ausgabe und transportiert mindestens Customer-/Tenant-Identität, Perspektive, Snapshot-/Tool-/Commit-Provenance, Artefaktreferenzen/-integrität, Coverage sowie Validation-/Security-Status. Die konkrete Serialisierung und Schema-Technologie bleiben offen.
+
+Die kanonische projektübergreifende Ownership-Grenze ist in `docs/Intune-Cross-Project-Contract.md` festgelegt. Die DocumentationEngine führt ihren Consumer-/Adaptervertrag separat und dupliziert nicht den vollständigen Plattformvertrag.
 
 ## 4. OPNsense-Datenfluss
 
@@ -542,8 +547,12 @@ automatisch bereinigt.
 - `30-IDD` als eigener Core-Projektbereich für den Intune Configuration Lifecycle,
 - initiales Repository `30-IDD/IntuneDefaultDeployment`,
 - vollständiger Intune Configuration Lifecycle fachlich in `30-IDD` statt `10-Automation`,
-- freigegebener IDD-Stand ist Desired State; IntuneCD-Kundenbackup ist Actual State,
+- freigegebener IDD-Stand ist Desired State / `desiredDeployment`; IntuneCD-Kundenbackup ist Actual State / `actual`,
 - kundenspezifische Intune-Snapshots gehören fachlich zur `CUST-*`-Boundary,
+- ein produktiv verwalteter Intune-Tenant erhält dort einen eigenen versionierten Repositorybereich; der exakte Repositoryname bleibt offen,
+- CustomerNumber und Microsoft Entra Tenant ID sind die stabilen Customer-/Tenant-Zuordnungsidentitäten,
+- versionierter BSSE Intune Snapshot-/Provenance-Contract zwischen IntuneCD/Monitor, Customer-Repository und DocumentationEngine,
+- native IntuneCD-Dokumentation und Compare sind provider-spezifische Hilfen und ersetzen weder DVM noch providerunabhängige Reconciliation,
 - CustomerNumber als stabile Kunden-ID,
 - OPNsense RAW pro Firewall in eigenem Repo,
 - lokaler First-Run / zentraler späterer Technikerweg,
@@ -565,6 +574,7 @@ automatisch bereinigt.
 - `assets/project-icons/30-idd.png` als versioniertes eigenes Core-Brandingasset mit zentralem Mapping,
 - `30-IDD` verwendet denselben fail-closed Brandingpfad wie die übrigen Core-Projekte,
 - Fachdokumentation `docs/Intune-Default-Deployment.md`,
+- Cross-Project-Contract `docs/Intune-Cross-Project-Contract.md`,
 - CustomerConfiguration-Sync,
 - Branding inkl. Hash-Marker für verwaltete Projekttypen,
 - Self-Hosting-Initializer,
@@ -619,8 +629,11 @@ automatisch bereinigt.
 - produktive IntuneCD-Monitor-Runtime/Hosting,
 - Azure-Repos-Authentifizierung für den Monitor,
 - getrennte Graph-Identitäten/Least-Privilege-Permissions für Backup vs. Deployment,
-- `CUST-*`-Intune-Repositoryvertrag und Customer-Onboarding-Integration,
-- Intune→DocumentationEngine-Inputcontract und Reconciliation-Contract,
+- exakte Benennung des `CUST-*`-Intune-Tenant-Repositories,
+- Customer-Onboarding-Integration für aktiviertes Intune Management,
+- technische Serialisierung/Schema-Technologie des BSSE Intune Snapshot Contracts,
+- DocumentationEngine Intune Source Adapter,
+- produktiver Actual/Desired-Reconciliation-Contract,
 - Diagnoseobjekte des letzten UI-Probes vollständig bereinigen,
 - nur diagnostisch hinzugefügtes App-Registration-Ownership entfernen,
 - Branding-Regressionstest lokal ausführen,
