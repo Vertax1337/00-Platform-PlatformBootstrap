@@ -163,6 +163,7 @@ Versionierte Assets:
 assets/project-icons/00-platform.png
 assets/project-icons/10-automation.png
 assets/project-icons/20-iac.png
+assets/project-icons/30-idd.png
 assets/project-icons/99-lab.png
 assets/project-icons/cust-generic.png
 ```
@@ -173,14 +174,14 @@ Mapping:
 00-Platform   → 00-platform.png
 10-Automation → 10-automation.png
 20-IaC        → 20-iac.png
-30-IDD        → OPEN; freigegebenes 30-idd.png noch nicht versioniert
+30-IDD        → 30-idd.png
 99-LAB        → 99-lab.png
 CUST-*        → cust-generic.png
 ```
 
-Für `30-IDD` wird bis zur Aufnahme des freigegebenen IDD-Assets bewusst **kein** fremdes/fallback Core-Icon gesetzt. Projekt- und Repository-Provisionierung sind davon getrennt.
+`30-IDD` verwendet damit code-seitig denselben verwalteten Project-Branding-Pfad wie die übrigen Core-Projekte.
 
-Idempotenz-Marker für Projekte mit freigegebenem Branding:
+Idempotenz-Marker:
 
 ```text
 BSSE.PlatformBootstrap.ProjectAvatarSha256
@@ -188,12 +189,12 @@ BSSE.PlatformBootstrap.ProjectAvatarSha256
 
 Runtime bestätigt:
 
-- Avatar-PUT für die vier bisher gebrandeten Core-Projekte erfolgreich,
+- Avatar-PUT für die vier bisher runtime-geprüften Core-Projekte erfolgreich,
 - reale Azure-DevOps-Antwort HTTP 204 wird als Erfolg akzeptiert,
 - Project-Property-Marker erfolgreich geschrieben und gelesen,
 - Folge-Apply erkennt diese vier Core-Branding-Zustände als `EXISTS`.
 
-Für `30-IDD` ist das Branding noch nicht runtime-verifiziert und bleibt bis zum versionierten `30-idd.png` ausdrücklich `OPEN`.
+Für `30-IDD` ist Mapping + Asset code-seitig implementiert; Azure-DevOps-Dry-Run/Apply/Marker-Readback und idempotenter Folge-Dry-Run sind noch nicht runtime-verifiziert.
 
 Bekannte Grenze: Externe manuelle Avatar-Änderungen können ohne dokumentierten Avatar-GET bei unverändertem Marker nicht zuverlässig erkannt werden.
 
@@ -561,10 +562,11 @@ automatisch bereinigt.
 
 - Core-/Customer-Bootstrap,
 - `30-IDD` im Core-Bootstrap mit initialem Repository-Vertrag `IntuneDefaultDeployment`,
-- kontrollierte Behandlung des noch fehlenden freigegebenen `30-IDD`-Brandingassets ohne Fallback-Icon,
+- `assets/project-icons/30-idd.png` als versioniertes eigenes Core-Brandingasset mit zentralem Mapping,
+- `30-IDD` verwendet denselben fail-closed Brandingpfad wie die übrigen Core-Projekte,
 - Fachdokumentation `docs/Intune-Default-Deployment.md`,
 - CustomerConfiguration-Sync,
-- Branding inkl. Hash-Marker für Projekte mit freigegebenem Asset,
+- Branding inkl. Hash-Marker für verwaltete Projekttypen,
 - Self-Hosting-Initializer,
 - lokales Customer-Onboarding-Frontend,
 - produktive Customer-Onboarding-YAML,
@@ -583,7 +585,7 @@ automatisch bereinigt.
 ### Bereits runtime-verifiziert
 
 - die vor der `30-IDD`-Erweiterung verwalteten Core-Projekte/-Repositories,
-- Branding + Marker + Idempotenz der vier bisher gebrandeten Core-Projekte,
+- Branding + Marker + Idempotenz der vier bisher runtime-geprüften Core-Projekte,
 - PlatformBootstrap Source Guard,
 - Entra App/SP-Erstellung,
 - Basic + Readers,
@@ -604,13 +606,14 @@ automatisch bereinigt.
   Probe-Merge-Kandidaten und abschließender `master`-Validierung erfolgreich
   nachgewiesen.
 
-`30-IDD` selbst ist mit dem neuen Bootstrap-Vertrag noch **nicht runtime-verifiziert**. Die vorhandene Azure-DevOps-Projektinstanz und deren tatsächlicher Repository-Istzustand werden nach Merge per Dry Run geprüft.
+`30-IDD` selbst ist mit dem neuen Bootstrap-Vertrag noch **nicht runtime-verifiziert**. Die vorhandene Azure-DevOps-Projektinstanz, deren Repository-Istzustand und das neue Branding werden per Dry Run und anschließend kontrolliertem Apply/Verify geprüft.
 
 ### Noch offen
 
 - `30-IDD` Core-Dry-Run gegen den realen Azure-DevOps-Istzustand,
 - erwartete `IntuneDefaultDeployment`-Umbenennung/-Erstellung nach Dry Run kontrolliert anwenden und verifizieren,
-- freigegebenes `30-idd.png` in PlatformBootstrap versionieren, Mapping/Test ergänzen und Branding anwenden/verifizieren,
+- `30-IDD`-Branding per Dry Run/Apply/Marker-Readback/idempotentem Folge-Dry-Run verifizieren,
+- tatsächliche Anzeige des `30-IDD`-Icons in Azure DevOps bestätigen,
 - IntuneCD-/IntuneCD-Monitor-Repositorystruktur,
 - Upstream-Versionierungs-/Fork-Strategie,
 - produktive IntuneCD-Monitor-Runtime/Hosting,
@@ -637,9 +640,9 @@ automatisch bereinigt.
 
 ## 16. Aktueller nächster Umsetzungsschritt
 
-1. Diese `30-IDD`-Erweiterung nach Review nach `main` mergen und GitHub-`main` in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
-2. `New-BSSEAzureDevOpsCore.ps1` zunächst ohne `-Apply` gegen `BSSE-CloudOps` ausführen und den realen `30-IDD`-Projekt-/Repository-Istzustand prüfen.
-3. Nur wenn der Dry Run ausschließlich den erwarteten sicheren `30-IDD`-Repository-Sollzustand plant, die Änderung bewusst mit `-Apply` ausführen und danach erneut ohne `-Apply` verifizieren. Das noch offene `30-IDD`-Branding bleibt davon getrennt.
+1. GitHub-`main` mit der abgeschlossenen `30-IDD`-Code-/Dokumentationsänderung in die Azure-Repos-Ausführungskopie `00-Platform/PlatformBootstrap/main` synchronisieren.
+2. `New-BSSEAzureDevOpsCore.ps1` zunächst ohne `-Apply` gegen `BSSE-CloudOps` ausführen und den realen `30-IDD`-Projekt-/Repository-/Branding-Istzustand prüfen.
+3. Nur wenn der Dry Run ausschließlich den erwarteten sicheren `30-IDD`-Repository- und Branding-Sollzustand plant, die Änderung bewusst mit `-Apply` ausführen und danach erneut ohne `-Apply` verifizieren.
 4. Diagnoseobjekte `sc-platform-bootstrap-azdo-ui-probe` / zugehöriges FIC bereinigen; nur das für den Test hinzugefügte App-Registration-Ownership entfernen. Vorbestehendes Service-Principal-Ownership bleibt unverändert.
 5. Temporäre AzureRM-WIF-Bridge `sc-platform-bootstrap-azdo-arm-bridge` erzeugen.
 6. Passendes separates Bridge-FIC erzeugen und exakt verifizieren.
