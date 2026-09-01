@@ -1,6 +1,6 @@
 # 30-IDD – Intune Default Deployment und Configuration Lifecycle
 
-> **Status:** Architekturgrenze und Cross-Project-Boundary BESCHLOSSEN; Core-Bootstrap-Integration und `30-IDD`-Branding code-seitig IMPLEMENTIERT; Azure-DevOps-Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Runtime noch offen.  
+> **Status:** Architekturgrenze, Cross-Project-Boundary und CUST-Intune-Repositoryvertrag BESCHLOSSEN; Core-Bootstrap-Integration und `30-IDD`-Branding code-seitig IMPLEMENTIERT; Azure-DevOps-Runtime-Verifikation für `30-IDD` ausstehend; IntuneCD-/IntuneCD-Monitor-Runtime noch offen.  
 > **Stand:** 2026-09-01
 
 ## 1. Zweck und Verantwortungsgrenze
@@ -22,7 +22,7 @@ Die Einordnung unter `30-IDD` ist bewusst von `10-Automation` getrennt:
 
 IntuneCD wird damit nicht lediglich als weiterer Collector betrachtet. Das Werkzeug kann Konfigurationen aus Intune sichern, lokale bzw. versionierte Konfigurationen vergleichen und Konfigurationen wieder in einen Tenant übertragen. Zusammen mit IntuneCD Monitor entsteht deshalb ein eigener fachlicher Configuration-Lifecycle-Bereich.
 
-Der projektübergreifende Ownership-/Boundary-Vertrag ist in [`Intune-Cross-Project-Contract.md`](Intune-Cross-Project-Contract.md) kanonisch festgelegt. Dieses Dokument hält nur die `30-IDD`-fachliche Sicht und dupliziert den vollständigen Cross-Project-Contract nicht.
+Der projektübergreifende Ownership-/Boundary-Vertrag ist in [`Intune-Cross-Project-Contract.md`](Intune-Cross-Project-Contract.md) kanonisch festgelegt. Der konkrete CUST-seitige Repositoryvertrag steht in [`Intune-Customer-Repository-Contract.md`](Intune-Customer-Repository-Contract.md). Dieses Dokument hält nur die `30-IDD`-fachliche Sicht und dupliziert die vollständigen Plattformverträge nicht.
 
 ## 2. Initialer Bootstrap-Vertrag
 
@@ -60,7 +60,7 @@ Die fachliche Zielrichtung ist:
           └──────────── actual ─────────────┘
 ```
 
-Der fachliche Cross-Project-Contract ist beschlossen. Technisch offen bleiben insbesondere Snapshot-Schema, Repositorybenennung, Monitor-Runtime/-Identity und Adapterimplementierung.
+Der fachliche Cross-Project-Contract und die CUST-seitige Repositorygrenze sind beschlossen. Technisch offen bleiben insbesondere Snapshot-Schema, Monitor-Runtime/-Identity, Customer-Onboarding-Implementierung und Adapterimplementierung.
 
 ## 4. Actual State und Desired State
 
@@ -84,20 +84,31 @@ Actual und Desired dürfen nicht stillschweigend zusammengeführt werden. Eine s
 
 Kundenspezifische Intune-Snapshots gehören fachlich zur bestehenden `CUST-*`-Boundary und nicht als Sammeldatenbestand in das zentrale `30-IDD`-Projekt.
 
-**Beschlossen:** Ein produktiv verwalteter Intune-Tenant erhält innerhalb der zugehörigen `CUST-*`-Boundary einen eigenen versionierten Repositorybereich bzw. ein eigenes Repository für den Intune-Iststand.
+**Beschlossen:** Ein produktiv verwalteter Intune-Tenant erhält innerhalb der zugehörigen `CUST-*`-Boundary genau ein eigenes versioniertes Repository für den Intune-Iststand.
 
-Beispielhaft, noch ohne festgelegten Repositorynamen:
+Verbindliches Namensschema:
+
+```text
+Intune-<TenantSlug>
+```
+
+Beispiel:
 
 ```text
 CUST-4711-Contoso
 ├── CustomerConfiguration
 ├── Documentation
-└── <Intune-Tenant-Repository>
+├── Intune-contoso-prod
+└── Intune-contoso-lab
 ```
 
-Der exakte Repositoryname ist noch **OFFEN**. Die stabile technische Tenant-Zuordnung erfolgt über die Microsoft Entra Tenant ID und nicht über den Repositorynamen. Die Customer-Zuordnung erfolgt über die bestehende `CustomerNumber`.
+Die stabile technische Tenant-Zuordnung erfolgt über die Microsoft Entra Tenant ID und nicht über den Repositorynamen. Der `TenantSlug` ist ein bei Erstregistrierung persistierter menschenlesbarer Alias und wird bei späteren Tenant-/Domain-/Kunden-Umbenennungen nicht automatisch geändert.
 
-Mehrere Intune-Tenants pro Kunde bleiben damit möglich.
+Die kanonische Zuordnung liegt in `CustomerConfiguration/customer.yml` unter `intune.tenants[]`. Mehrere Intune-Tenants pro Kunde sind ausdrücklich unterstützt.
+
+Customer-Intune-Repositories werden bis zu einer feineren, technisch verifizierten Datenklassifikation als `RAW-CONFIDENTIAL` behandelt.
+
+Details: [`Intune-Customer-Repository-Contract.md`](Intune-Customer-Repository-Contract.md).
 
 ## 6. BSSE Intune Snapshot Contract
 
@@ -131,6 +142,8 @@ Der Monitor ist ein Multi-Tenant-Frontend für IntuneCD und unterstützt bereits
 - optionale native IntuneCD-Dokumentation.
 
 Der Upstream-Code klont das einem Tenant zugeordnete Git-Repository, führt `IntuneCD-startbackup` bzw. `IntuneCD-startupdate` aus, liest Summary-/Assignment-Artefakte und pusht Änderungen wieder in das Repository.
+
+Für CloudOps gilt zusätzlich: Die Monitor-Datenbank darf diese Zuordnung operativ cachen, ist aber nicht kanonische Source of Truth für `CustomerNumber ↔ tenantId ↔ Repository`. Diese Zuordnung bleibt versioniert in der CustomerConfiguration.
 
 ### IntuneCD
 
@@ -176,6 +189,14 @@ Die exakten Permissions werden erst aus den tatsächlich aktivierten IntuneCD-Mo
 ### 8.5 Hosting des Monitors
 
 Der Upstream-Monitor bringt eine Azure-/Container-basierte Deploymentvariante mit. Die konkrete CloudOps-Zielruntime ist noch offen und wird vor Implementierung gegen aktuelle Azure-Dienste, Wartbarkeit, Kosten, Security und Identity-Anforderungen bewertet.
+
+### 8.6 Customer-Onboarding
+
+Der Repositoryvertrag ist fachlich festgelegt, technisch aber noch nicht umgesetzt.
+
+Der zukünftige PlatformBootstrap-Pfad muss `0..n` Intune-Tenants je Kunde idempotent verarbeiten, `Intune-<TenantSlug>` provisionieren und die kanonische `intune.tenants[]`-Registry in CustomerConfiguration pflegen.
+
+Das bestehende `customer.tenantId` beziehungsweise der heutige `TenantId`-Parameter wird nicht stillschweigend zum Multi-Tenant-Intune-Vertrag umdefiniert. Die konkrete CLI-/Pipelineoberfläche bleibt ein eigener Implementierungsworkchunk.
 
 ## 9. DocumentationEngine-Integration
 
@@ -240,8 +261,10 @@ Damit gilt code-seitig:
 - Der vollständige Intune Configuration Lifecycle gehört fachlich nach `30-IDD`, nicht nach `10-Automation`.
 - Initiales Repository: `IntuneDefaultDeployment`.
 - Kundenspezifische Intune-Snapshots gehören fachlich zur `CUST-*`-Boundary.
-- Ein produktiv verwalteter Intune-Tenant erhält einen eigenen versionierten Customer-Repositorybereich; der exakte Repo-Name bleibt offen.
-- CustomerNumber und Entra Tenant ID sind die stabilen Zuordnungsidentitäten.
+- Ein produktiv verwalteter Intune-Tenant erhält genau ein eigenes Customer-Repository `Intune-<TenantSlug>`.
+- CustomerNumber und Entra Tenant ID sind die stabilen Zuordnungsidentitäten; TenantSlug ist ein persistierter Repositoryalias.
+- Die kanonische Tenant→Repository-Zuordnung liegt in `CustomerConfiguration/customer.yml` unter `intune.tenants[]`.
+- Customer-Intune-Repositories sind zunächst `RAW-CONFIDENTIAL`.
 - Intune Actual State und freigegebener IDD Desired State werden getrennt behandelt.
 - Der BSSE Intune Snapshot-/Provenance-Contract ist als Cross-Project-Grenze beschlossen.
 - Native IntuneCD-Dokumentation und Compare ersetzen weder DVM noch providerunabhängige Reconciliation.
@@ -253,6 +276,7 @@ Damit gilt code-seitig:
 - `assets/project-icons/30-idd.png` ist als eigenes Core-Brandingasset versioniert und im zentralen Mapping aktiviert.
 - Regressionstests decken den minimalen `30-IDD`-Core-Vertrag sowie Mapping, PNG-Integrität, Dateigröße und die festgeschriebene Git-Blob-Identität des neuen Assets ab.
 - Cross-Project-Contract ist unter `docs/Intune-Cross-Project-Contract.md` versioniert.
+- CUST-Intune-Repositoryvertrag ist unter `docs/Intune-Customer-Repository-Contract.md` versioniert.
 
 ### Noch offen
 
@@ -262,8 +286,9 @@ Damit gilt code-seitig:
 - produktive Runtime/Hosting,
 - Azure-Repos-Authentifizierung,
 - Graph-Identitäten und Least-Privilege-Permissions,
-- exakte `CUST-*`-Intune-Repositorybenennung,
-- Customer-Onboarding-Integration,
+- technische Customer-Onboarding-Integration für `0..n` Intune-Tenants,
+- technische `customer.yml`-Reconciliation,
+- Seed-/Default-Branch-Vertrag der Customer-Intune-Repositories,
 - technisches Snapshot-Schema,
 - DocumentationEngine Intune-Adapterimplementierung,
 - produktiver Actual/Desired-Reconciliation-Contract.
